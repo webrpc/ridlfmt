@@ -165,10 +165,10 @@ func (f *form) formatLine(line string) (string, error) {
 			if len(parts) == 2 {
 				p1 := strings.TrimSpace(parts[0])
 				p2 := strings.TrimSpace(parts[1])
-				line = fmt.Sprintf("%s: %s", p1, p2)
+				s = fmt.Sprintf("%s: %s", p1, p2)
 			}
 
-			line = fmt.Sprintf("%s%s", strings.Repeat(" ", f.padding), line)
+			line = fmt.Sprintf("%s%s", strings.Repeat(" ", f.padding), s)
 			line = c.appendInlineComment(line)
 		case sectionService:
 			s, c := parseAndDivideInlineComment(line)
