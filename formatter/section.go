@@ -15,4 +15,5 @@ const (
 	sectionField
 	sectionTag
 	sectionError
+	sectionImport
 )

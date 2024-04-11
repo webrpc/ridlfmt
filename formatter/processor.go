@@ -103,6 +103,9 @@ func (f *form) formatLine(line string) (string, error) {
 	case sectionService:
 		f.padding = 0
 		line = reduceSpaces(line)
+	case sectionImport:
+		f.padding = 0
+		line = reduceSpaces(line)
 	case sectionError:
 		f.padding = 0
 		errParts := strings.Split(line, `"`)
@@ -174,6 +177,17 @@ func (f *form) formatLine(line string) (string, error) {
 			}
 
 			line = c.appendInlineComment(line)
+		case sectionImport:
+			s, c := parseAndDivideInlineComment(line)
+			parts := strings.Split(s, ":")
+			if len(parts) == 2 {
+				p1 := strings.TrimSpace(parts[0])
+				p2 := strings.TrimSpace(parts[1])
+				s = fmt.Sprintf("%s: %s", p1, p2)
+			}
+
+			line = fmt.Sprintf("%s%s", strings.Repeat(" ", f.padding), s)
+			line = c.appendInlineComment(line)
 		default:
 			return "", fmt.Errorf("wrong top level for field %s", line)
 		}
@@ -211,6 +225,9 @@ func (f *form) parseSection(line string) {
 	case strings.HasPrefix(line, "version"):
 		f.section = sectionVersion
 		f.topLvlSection = sectionVersion
+	case strings.HasPrefix(line, "import"):
+		f.section = sectionImport
+		f.topLvlSection = sectionImport
 	case strings.HasPrefix(line, "#"):
 		f.section = sectionComment
 	case strings.HasPrefix(line, "enum"):
