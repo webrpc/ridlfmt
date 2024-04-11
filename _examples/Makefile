@@ -1,3 +1,3 @@
 format-1:
-	go run ../main.go -s in1.ridl
+	go run ../main.go -s e1.ridl
 

@@ -71,6 +71,6 @@ service ExampleService # oof
 - Ping()
  - Status() => (status: bool)
   - Version() => (version: Version)
-   - GetUser(header: map<string,string>, userID: uint64) => (code: uint32, user: User)
-    - FindUser(s: SearchFilter) => (name: string, user: User) ###! last
+   - GetUser   (   header   :    map  <   string   ,   string   >   ,   userID   :    uint64   )   =>   (  code  :   uint32   ,   user  :   User  )
+    - FindUser(s :SearchFilter) => (name: string, user: User) ###! last
 

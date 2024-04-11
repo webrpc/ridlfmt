@@ -84,14 +84,3 @@ func countHashes(s string, count int) (string, int) {
 
 	return sub, count
 }
-
-func (f *form) commentsPrint() string {
-	var lines string
-	for _, c := range f.comments {
-		lines += fmt.Sprintf("%s%s\n", strings.Repeat(" ", f.padding), c.getString())
-	}
-
-	f.comments = nil
-
-	return lines
-}

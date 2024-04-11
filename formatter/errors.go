@@ -2,8 +2,6 @@ package formatter
 
 import (
 	"fmt"
-	"sort"
-	"strings"
 )
 
 type ridlError struct {
@@ -40,38 +38,4 @@ func (e ridlErrors) getLenghts() (codeLen, nameLen, descLen, httpLen int) {
 	}
 
 	return codeLen, nameLen, descLen, httpLen
-}
-
-func (f *form) errorsPrint() string {
-	codeLen, nameLen, descLen, httpLen := f.errors.getLenghts()
-
-	if f.sortErrors {
-		sort.Sort(f.errors)
-	}
-
-	var lines string
-	for i, err := range f.errors {
-		lines += fmt.Sprintf("error %-*d %-*s \"%s\"%s HTTP %-*d",
-			codeLen,
-			err.code,
-			nameLen,
-			err.name,
-			err.description,
-			strings.Repeat(" ", descLen-len(err.description)),
-			httpLen,
-			err.httpCode,
-		)
-
-		if err.inlineComment != nil {
-			lines += fmt.Sprintf(" %s", err.inlineComment.getString())
-		}
-
-		if i != len(f.errors)-1 {
-			lines += "\n"
-		}
-	}
-
-	f.errors = nil
-
-	return lines
 }
