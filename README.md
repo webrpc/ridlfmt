@@ -29,7 +29,7 @@ Install these extensions:
 
 1. [RIDL syntax](https://marketplace.visualstudio.com/items?itemName=XanderAppWorks.vscode-webrpc-ridl-syntax)
    - Needed for recognition of `.ridl` filetype and as a bonus it provides syntax highlighting.
-2. [Custom Local Formatters](https://marketplace.visualstudio.com/items?itemName=jkillian.custom-local-formattersa)
+2. [Custom Local Formatters](https://marketplace.visualstudio.com/items?itemName=jkillian.custom-local-formatters)
 
 If the extensions can't be found, install them manually: [Stack overflow: How to install VS code extension manually?](https://stackoverflow.com/questions/42017617/how-to-install-vs-code-extension-manually)
 
