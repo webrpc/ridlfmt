@@ -168,12 +168,18 @@ func (f *form) formatLine(line string) (string, error) {
 
 			if len(parts) == 2 {
 				p2 := strings.TrimSpace(parts[1])
+				_, stream := strings.CutPrefix(p2, "stream")
 				outArgs, err := formatMethodArguments(p2)
 				if err != nil {
 					return line, err
 				}
 
-				line = fmt.Sprintf("%s => (%s)", line, outArgs)
+				line += " => "
+				if stream {
+					line += "stream "
+				}
+
+				line += "(" + outArgs + ")"
 			}
 
 			line = c.appendInlineComment(line)
