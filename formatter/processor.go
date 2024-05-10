@@ -143,16 +143,17 @@ func (f *form) formatLine(line string) (string, error) {
 		f.padding = 2
 		line = reduceSpaces(line)
 		switch f.topLvlSection {
-		case sectionStruct, sectionEnum:
+		case sectionEnum:
+			s, c := parseAndDivideInlineComment(line)
+			p := strings.TrimSpace(strings.Split(strings.TrimSpace(s), "-")[1])
+			line = fmt.Sprintf("%s- %s", strings.Repeat(" ", f.padding), p)
+			line = c.appendInlineComment(line)
+		case sectionStruct:
 			s, c := parseAndDivideInlineComment(line)
 			parts := strings.Split(s, ":")
-			if len(parts) == 2 {
-				p1 := strings.TrimSpace(parts[0])
-				p2 := strings.TrimSpace(parts[1])
-				s = fmt.Sprintf("%s: %s", p1, p2)
-			}
-
-			line = fmt.Sprintf("%s%s", strings.Repeat(" ", f.padding), s)
+			p1 := strings.TrimSpace(strings.Split(strings.TrimSpace(parts[0]), "-")[1])
+			p2 := strings.TrimSpace(parts[1])
+			line = fmt.Sprintf("%s- %s: %s", strings.Repeat(" ", f.padding), p1, p2)
 			line = c.appendInlineComment(line)
 		case sectionService:
 			s, c := parseAndDivideInlineComment(line)
