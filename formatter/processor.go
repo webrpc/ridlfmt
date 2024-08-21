@@ -128,12 +128,12 @@ func (f *form) formatLine(line string) (string, error) {
 		}
 
 		errorEnding := reduceSpaces(strings.TrimSpace(partsLine[2]))
-		partsEnd := strings.Split(errorEnding, " ")
+		partsEnd := strings.Split(strings.Split(errorEnding, "#")[0], " ")
 		if len(partsEnd) != 2 {
 			return "", fmt.Errorf("wrong format of end of an error =(%s)", errorEnding)
 		}
 
-		httpCode, err := strconv.Atoi(partsEnd[1])
+		httpCode, err := strconv.Atoi(strings.Split(partsEnd[1], "#")[0])
 		if err != nil {
 			return "", fmt.Errorf("strconv http code: %w", err)
 		}
@@ -143,7 +143,7 @@ func (f *form) formatLine(line string) (string, error) {
 			name:          partsBegin[2],
 			description:   partsLine[1],
 			httpCode:      httpCode,
-			inlineComment: &comment{},
+			inlineComment: parseComment(errorEnding),
 		}
 
 		f.errors = append(f.errors, e)
