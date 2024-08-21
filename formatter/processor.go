@@ -129,7 +129,6 @@ func (f *form) formatLine(line string) (string, error) {
 
 		errorEnding := reduceSpaces(strings.TrimSpace(partsLine[2]))
 		partsEnd := strings.Split(strings.TrimSpace(strings.Split(errorEnding, "#")[0]), " ")
-		fmt.Println(partsEnd)
 		if len(partsEnd) != 2 {
 			return "", fmt.Errorf("wrong format of end of an error =(%s)", errorEnding)
 		}
