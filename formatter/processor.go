@@ -108,37 +108,45 @@ func (f *form) formatLine(line string) (string, error) {
 		line = reduceSpaces(line)
 	case sectionError:
 		f.padding = 0
-		errParts := strings.Split(line, `"`)
+		partsLine := strings.Split(line, `"`)
 
-		e := ridlError{}
-		if len(errParts) == 3 {
-			errParts[0] = strings.TrimSpace(errParts[0])
-			errParts[0] = reduceSpaces(errParts[0])
-
-			parts := strings.Split(errParts[0], " ")
-			code, err := strconv.Atoi(parts[1])
-			if err != nil {
-				return line, err
-			}
-
-			e.code = code
-			e.name = parts[2]
-			e.description = errParts[1]
-
-			errorEnding := reduceSpaces(strings.TrimSpace(errParts[2]))
-			parts = strings.Split(errorEnding, " ")
-			httpCode, err := strconv.Atoi(parts[1])
-			if err != nil {
-				return line, err
-			}
-
-			e.inlineComment = parseComment(errorEnding)
-			e.httpCode = httpCode
+		if len(partsLine) != 3 {
+			return "", fmt.Errorf("wrong error format line=(%s)", line)
 		}
 
-		if f.section == sectionError {
-			f.errors = append(f.errors, e)
+		partsLine[0] = strings.TrimSpace(partsLine[0])
+		partsLine[0] = reduceSpaces(partsLine[0])
+
+		partsBegin := strings.Split(partsLine[0], " ")
+		if len(partsBegin) != 3 {
+			return "", fmt.Errorf("wrong error format line=(%s)", line)
 		}
+
+		code, err := strconv.Atoi(partsBegin[1])
+		if err != nil {
+			return "", fmt.Errorf("strconv error code: %w", err)
+		}
+
+		errorEnding := reduceSpaces(strings.TrimSpace(partsLine[2]))
+		partsEnd := strings.Split(errorEnding, " ")
+		if len(partsEnd) != 2 {
+			return "", fmt.Errorf("wrong format of end of an error =(%s)", errorEnding)
+		}
+
+		httpCode, err := strconv.Atoi(partsEnd[1])
+		if err != nil {
+			return "", fmt.Errorf("strconv http code: %w", err)
+		}
+
+		e := ridlError{
+			code:          code,
+			name:          partsBegin[2],
+			description:   partsLine[1],
+			httpCode:      httpCode,
+			inlineComment: &comment{},
+		}
+
+		f.errors = append(f.errors, e)
 	case sectionField:
 		f.padding = 2
 		line = reduceSpaces(line)

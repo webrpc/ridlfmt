@@ -59,12 +59,13 @@ struct ComplexType # dsdas
 #!
 #! Errors
 #!
-error      2     UserNotFound "User not found" HTTP 404
+error      2      UserNotFound "User not found" HTTP 404
 error 20 SpaceshipNotFound "Spaceship not found"       HTTP 404
 error 300 Unsomething "Un what?" HTTP                      444
 error 1  IAmFirst "I am first" HTTP 101
 
 error 20         UserNotFound     "User not found" HTTP 404
+error 4         UserTooYoung     ""  HTTP   404
 
 
 service ExampleService # oof
