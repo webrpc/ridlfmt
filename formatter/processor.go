@@ -292,7 +292,7 @@ func (f *form) errorsPrint() string {
 			nameLen,
 			err.name,
 			err.description,
-			strings.Repeat(" ", descLen-len(err.description)),
+			strings.Repeat(" ", descLen-len([]rune(err.description))),
 			httpLen,
 			err.httpCode,
 		)
