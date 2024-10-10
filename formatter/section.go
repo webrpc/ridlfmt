@@ -16,4 +16,5 @@ const (
 	sectionTag
 	sectionError
 	sectionImport
+	sectionAnnotation
 )

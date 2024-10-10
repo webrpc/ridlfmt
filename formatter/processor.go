@@ -86,6 +86,23 @@ func (f *form) formatLine(line string) (string, error) {
 	f.parseSection(line)
 
 	switch f.section {
+	case sectionWebRPC:
+		fallthrough
+	case sectionName:
+		fallthrough
+	case sectionVersion:
+		f.padding = 0
+		line = reduceSpaces(line)
+		s, c := parseAndDivideInlineComment(line)
+		parts := strings.Split(s, "=")
+		if len(parts) != 2 {
+			return "", fmt.Errorf("unexpected amount of parts=(%d) %s", len(parts), line)
+		}
+
+		line = fmt.Sprintf("%s = %s", removeSpaces(parts[0]), removeSpaces(parts[1]))
+
+		line = c.appendInlineComment(line)
+
 	case sectionComment:
 		f.comments = append(f.comments, parseComment(line))
 	case sectionEnum:
@@ -218,6 +235,34 @@ func (f *form) formatLine(line string) (string, error) {
 
 		line = fmt.Sprintf("%s%s", strings.Repeat(" ", f.padding), line)
 		line = c.appendInlineComment(line)
+	case sectionAnnotation:
+		f.padding = 4
+		s, c := parseAndDivideInlineComment(line)
+
+		parts := strings.Split(s, "@")
+		if len(parts) < 2 {
+			return "", fmt.Errorf("unexpected amount of parts=(%d)", len(parts))
+		}
+
+		var as string
+		for i := 1; i < len(parts); i++ {
+			ap := strings.Split(parts[i], ":")
+			if i > 1 {
+				as += " "
+			}
+
+			switch len(ap) {
+			case 1:
+				as = fmt.Sprintf("%s@%s", as, removeSpaces(ap[0]))
+			case 2:
+				as = fmt.Sprintf("%s@%s:%s", as, removeSpaces(ap[0]), removeSpaces(ap[1]))
+			default:
+				return "", fmt.Errorf("unexpected amount of parts for one anotation parts=(%d) %s", len(ap), line)
+			}
+		}
+
+		line = fmt.Sprintf("%s%s", strings.Repeat(" ", f.padding), as)
+		line = c.appendInlineComment(line)
 	default:
 	}
 
@@ -261,6 +306,8 @@ func (f *form) parseSection(line string) {
 		f.section = sectionField
 	case strings.HasPrefix(line, "+"):
 		f.section = sectionTag
+	case strings.HasPrefix(line, "@"):
+		f.section = sectionAnnotation
 	default:
 		f.section = sectionUnknown
 	}
@@ -330,6 +377,10 @@ func reduceSpaces(input string) string {
 	return pattern.ReplaceAllString(input, " ")
 }
 
+func removeSpaces(input string) string {
+	return strings.ReplaceAll(input, " ", "")
+}
+
 func formatMethodArguments(s string) (string, error) {
 	content, err := extractFromParenthesis(s)
 	if err != nil {
@@ -360,7 +411,7 @@ func extractFromParenthesis(s string) (string, error) {
 }
 
 func splitArguments(s string) []string {
-	s = strings.ReplaceAll(strings.TrimSpace(s), " ", "")
+	s = removeSpaces(strings.TrimSpace(s))
 	var parts []string
 	var ic, im int
 
@@ -378,7 +429,7 @@ func splitArguments(s string) []string {
 				break
 			}
 		} else {
-			s = strings.ReplaceAll(s, " ", "")
+			s = removeSpaces(s)
 			c, more := findComma(ic, s)
 			if more {
 				parts = append(parts, s[:c])
