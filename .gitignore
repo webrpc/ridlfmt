@@ -3,3 +3,5 @@
 .idea/*
 
 bin/*
+_examples/e2.ridl
+coverage.txt

@@ -12,29 +12,38 @@ import (
 )
 
 func main() {
+	flagSet := flag.NewFlagSet("ridlfmt", flag.ExitOnError)
+	if err := runRidlfmt(flagSet, os.Args[1:]); err != nil {
+		log.Fatalf("Error: %v", err)
+	}
+}
+
+func runRidlfmt(flagSet *flag.FlagSet, args []string) error {
 	flag.Usage = usage
 
-	sortErrorsFlag := flag.Bool("s", false, "sort errors by code")
-	writeFlag := flag.Bool("w", false, "write output to input file (overwrites the file)")
-	helpFlag := flag.Bool("h", false, "show help")
+	sortErrorsFlag := flagSet.Bool("s", false, "sort errors by code")
+	writeFlag := flagSet.Bool("w", false, "write output to input file (overwrites the file)")
+	helpFlag := flagSet.Bool("h", false, "show help")
 
-	flag.Parse()
-
-	args := flag.Args()
+	if err := flagSet.Parse(args); err != nil {
+		return fmt.Errorf("parse args: %w", err)
+	}
 
 	if *helpFlag {
 		flag.Usage()
 		os.Exit(0)
 	}
 
-	if len(args) == 0 && !isInputFromPipe() {
+	fileArgs := flagSet.Args()
+
+	if len(fileArgs) == 0 && !isInputFromPipe() {
 		fmt.Fprintln(os.Stderr, "error: no input files specified")
 		flag.Usage()
 		os.Exit(1)
 	}
 
 	if *writeFlag {
-		for _, fileName := range args {
+		for _, fileName := range fileArgs {
 			err := formatAndWriteToFile(fileName, *sortErrorsFlag)
 			if err != nil {
 				log.Fatalf("Error processing file %s: %v", fileName, err)
@@ -47,7 +56,7 @@ func main() {
 				log.Fatalf("Error processing input from pipe: %v", err)
 			}
 		} else {
-			for _, fileName := range args {
+			for _, fileName := range fileArgs {
 				err := formatAndPrintToStdout(fileName, *sortErrorsFlag)
 				if err != nil {
 					log.Fatalf("Error processing file %s: %v", fileName, err)
@@ -55,6 +64,8 @@ func main() {
 			}
 		}
 	}
+
+	return nil
 }
 
 func isInputFromPipe() bool {
