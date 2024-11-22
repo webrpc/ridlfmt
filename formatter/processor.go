@@ -184,7 +184,15 @@ func (f *form) formatLine(line string) (string, error) {
 			s, c := parseAndDivideInlineComment(line)
 			parts := strings.Split(s, "=>")
 			p1 := strings.TrimSpace(parts[0])
-			methodName := strings.TrimPrefix(strings.TrimSpace(strings.ReplaceAll(strings.Split(p1, "(")[0], " ", "")), "-")
+
+			methodName := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(strings.Split(p1, "(")[0]), "-"))
+			methodName, isStreamInput := strings.CutPrefix(methodName, "stream ")
+			methodName = removeSpaces(methodName)
+
+			if isStreamInput {
+				methodName = "stream " + methodName
+			}
+
 			inArgs, err := formatMethodArguments(p1)
 			if err != nil {
 				return line, err
