@@ -263,7 +263,12 @@ func (f *form) formatLine(line string) (string, error) {
 			case 1:
 				as = fmt.Sprintf("%s@%s", as, removeSpaces(ap[0]))
 			case 2:
-				as = fmt.Sprintf("%s@%s:%s", as, removeSpaces(ap[0]), removeSpaces(ap[1]))
+				v := strings.TrimSpace(ap[1])
+				if !strings.HasPrefix(v, `"`) && !strings.HasSuffix(v, `"`) {
+					v = removeSpaces(v)
+				}
+
+				as = fmt.Sprintf("%s@%s:%s", as, removeSpaces(ap[0]), v)
 			default:
 				return "", fmt.Errorf("unexpected amount of parts for one anotation parts=(%d) %s", len(ap), line)
 			}
