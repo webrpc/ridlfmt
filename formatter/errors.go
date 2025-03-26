@@ -28,8 +28,8 @@ func (e ridlErrors) getLenghts() (codeLen, nameLen, descLen, httpLen int) {
 			nameLen = len(err.name)
 		}
 
-		if len(err.description) > descLen {
-			descLen = len(err.description)
+		if len([]rune(err.description)) > descLen {
+			descLen = len([]rune(err.description))
 		}
 
 		if len(fmt.Sprintf("%d", err.httpCode)) > httpLen {
