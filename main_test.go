@@ -156,7 +156,7 @@ service ExampleService # oof
   	@  auth   :   ApiKeyAuth @   who    dsa   :   J    W    T   ## dadsadadsa
 - Ping()
  - Status() => (status: bool)
-  	@                        internal                         @      public                ##      dsada s dsa
+  	@     internal   @   public   @ stringo :  " string with spaces  "   ##      dsada s dsa
   - Version() => (version: Version)
 @public
    - GetUser   (   header   :    map  <   string   ,   string   >   ,   userID   :    uint64   )   =>   (  code  :   uint32   ,   user  :   User  )
@@ -248,7 +248,7 @@ service ExampleService # oof
     @auth:ApiKeyAuth @whodsa:JWT ## dadsadadsa
   - Ping()
   - Status() => (status: bool)
-    @internal @public ## dsada s dsa
+    @internal @public @stringo:" string with spaces  " ## dsada s dsa
   - Version() => (version: Version)
     @public
   - GetUser(header: map<string,string>, userID: uint64) => (code: uint32, user: User)
