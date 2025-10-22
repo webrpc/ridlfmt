@@ -94,6 +94,7 @@ enum Intent: string
   -       closeSession
 
 enum           Kind:            uint32
+      #   user   
   - USER
 # admin
   - ADMIN
@@ -186,6 +187,7 @@ enum Intent: string
   - closeSession
 
 enum Kind: uint32
+  #   user
   - USER
   # admin
   - ADMIN
