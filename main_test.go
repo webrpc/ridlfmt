@@ -83,7 +83,7 @@ func testHelpFlag(t *testing.T) {
 }
 
 const testInput string = `
-      webrpc    =    v1    #    version of webrpc schema format (ridl or json)
+      webrpc    =    v1    # version of webrpc schema format (ridl or json)
    name    = 		example # name of your backend app
 	version=v0.0.1#version of your schema
 
@@ -156,7 +156,7 @@ service ExampleService # oof
   	@  auth   :   ApiKeyAuth @   who    dsa   :   J    W    T   ## dadsadadsa
 - Ping()
  - Status() => (status: bool)
-  	@     internal   @   public   @ stringo :  " string with spaces  "   ##      dsada s dsa
+  	@     internal   @   public   @ stringo :  " string with spaces  "   ##    multiple hashes and spaces  
   - Version() => (version: Version)
 @public
    - GetUser   (   header   :    map  <   string   ,   string   >   ,   userID   :    uint64   )   =>   (  code  :   uint32   ,   user  :   User  )
@@ -201,7 +201,7 @@ struct User
 
   - username: string
     + json = USERNAME
-    + go.tag.db = username #! far away
+    + go.tag.db = username #!       far away
 
   #! role?
   #! role!
@@ -248,7 +248,7 @@ service ExampleService # oof
     @auth:ApiKeyAuth @whodsa:JWT ## dadsadadsa
   - Ping()
   - Status() => (status: bool)
-    @internal @public @stringo:" string with spaces  " ## dsada s dsa
+    @internal @public @stringo:" string with spaces  " ##    multiple hashes and spaces
   - Version() => (version: Version)
     @public
   - GetUser(header: map<string,string>, userID: uint64) => (code: uint32, user: User)

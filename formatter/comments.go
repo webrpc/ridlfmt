@@ -19,22 +19,25 @@ func parseComment(s string) *comment {
 		count := 1
 
 		content := parts[1]
-		if strings.HasPrefix(content, " ") {
-			content = strings.TrimSpace(strings.SplitN(parts[1], " ", 2)[1])
-		} else if strings.HasPrefix(content, "!") {
+
+		if strings.HasPrefix(content, "!") {
 			hidden = true
-			content = strings.TrimSpace(strings.SplitN(parts[1], "!", 2)[1])
+			content = strings.SplitN(content, "!", 2)[1]
 		} else if strings.HasPrefix(content, "#") {
 			content, count = countHashes(content, count)
 			sub, found := strings.CutPrefix(content, "!")
 			if found {
 				hidden = true
-				content = strings.TrimSpace(sub)
+				content = sub
 			}
 		}
 
+		if !strings.HasPrefix(content, " ") {
+			content = " " + content
+		}
+
 		c := comment{
-			content:   strings.TrimSpace(content),
+			content:   strings.TrimRight(content, " "),
 			hidden:    hidden,
 			hashCount: count,
 			original:  parts[1],
@@ -60,9 +63,9 @@ func parseAndDivideInlineComment(s string) (string, *comment) {
 func (c comment) getString() string {
 	var s string
 	if c.hidden {
-		s = fmt.Sprintf("%s! %s", strings.Repeat("#", c.hashCount), c.content)
+		s = fmt.Sprintf("%s!%s", strings.Repeat("#", c.hashCount), c.content)
 	} else {
-		s = fmt.Sprintf("%s %s", strings.Repeat("#", c.hashCount), c.content)
+		s = fmt.Sprintf("%s%s", strings.Repeat("#", c.hashCount), c.content)
 	}
 
 	return strings.TrimSpace(s)

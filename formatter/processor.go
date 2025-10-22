@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -375,7 +374,7 @@ func (f *form) removeDoubleLines(s string) string {
 	var modifiedLines []string
 	var emptyLine bool
 
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		if line != "" || !emptyLine {
 			modifiedLines = append(modifiedLines, line)
 			emptyLine = line == ""
@@ -386,8 +385,27 @@ func (f *form) removeDoubleLines(s string) string {
 }
 
 func reduceSpaces(input string) string {
-	pattern := regexp.MustCompile(`\s+`)
-	return pattern.ReplaceAllString(input, " ")
+	// Find the position of the '#' character
+	hashIndex := strings.Index(input, "#")
+	if hashIndex == -1 {
+		// If there's no '#', just reduce spaces in the entire string
+		return reduceSpacesInString(input)
+	}
+
+	// Separate the part before and after the '#'
+	beforeHash := input[:hashIndex]
+	afterHash := input[hashIndex:]
+
+	// Reduce spaces in the part before the '#'
+	reduced := reduceSpacesInString(beforeHash)
+
+	return reduced + afterHash
+}
+
+func reduceSpacesInString(s string) string {
+	// Split the string and join using a single space
+	parts := strings.Fields(s)
+	return strings.Join(parts, " ")
 }
 
 func removeSpaces(input string) string {
