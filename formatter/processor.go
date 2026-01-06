@@ -421,11 +421,14 @@ func formatMethodArguments(s string) (string, error) {
 	args := splitArguments(content)
 	for i, a := range args {
 		p := strings.Split(a, ":")
-		if len(p) != 2 {
-			return "", fmt.Errorf("missing ':' in arguments for method")
+		switch len(p) {
+		case 1:
+			args[i] = p[0]
+		case 2:
+			args[i] = fmt.Sprintf("%s: %s", p[0], p[1])
+		default:
+			return "", fmt.Errorf("wrong parameter values")
 		}
-
-		args[i] = fmt.Sprintf("%s: %s", p[0], p[1])
 	}
 
 	return strings.Join(args, ", "), nil
