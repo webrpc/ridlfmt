@@ -83,3 +83,5 @@ service ExampleService # oof
 
   -stream                        Se ndAndRecv(req: string) => stream (resp: string)
   -streamSe ndAndRecv(req: string) => stream (resp: string)
+
+- Updat  eU ser (  User  )   =>   (  User , ok   :   bool )

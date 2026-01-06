@@ -162,6 +162,7 @@ service ExampleService # oof
 @public
    - GetUser   (   header   :    map  <   string   ,   string   >   ,   userID   :    uint64   )   =>   (  code  :   uint32   ,   user  :   User  )
     - FindUser(s :SearchFilter) => (name: string, user: User) ###! last
+	- Updat  eU ser (  User   ,  really   :    bool  )   =>   (  User ,    ok  :   bool )
 
     -    stream    Re cv   (req  :   string   )
 
@@ -255,6 +256,7 @@ service ExampleService # oof
     @public
   - GetUser(header: map<string,string>, userID: uint64) => (code: uint32, user: User)
   - FindUser(s: SearchFilter) => (name: string, user: User) ###! last
+  - UpdateUser(User, really: bool) => (User, ok: bool)
 
   - stream Recv(req: string)
 
