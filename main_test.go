@@ -85,7 +85,7 @@ func testHelpFlag(t *testing.T) {
 const testInput string = `
       webrpc    =    v1    # version of webrpc schema format (ridl or json)
    name    = 		example # name of your backend app
-	version=v0.0.1#version of your schema
+	version=v0.0.1 #version of your schema
 
 # bar
 enum Intent: string
@@ -145,7 +145,7 @@ struct ComplexType # dsdas
 #! Errors
 #!
 error      2      UserNotFound "User not found" HTTP 404
-error 20 SpaceshipNotFound "Spaceship not found"       HTTP 404#comment
+error 20 SpaceshipNotFound "Spaceship not found"       HTTP 404 #comment
 error 300 Unsomething "Un what?" HTTP                      444 #comment
 error 1  IAmFirst "I am first" HTTP 101 # comment
 

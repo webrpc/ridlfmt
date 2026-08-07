@@ -13,40 +13,85 @@ type comment struct {
 }
 
 func parseComment(s string) *comment {
-	parts := strings.SplitN(s, "#", 2)
-	if len(parts) > 1 {
-		var hidden bool
-		count := 1
-
-		content := parts[1]
-
-		if strings.HasPrefix(content, "!") {
-			hidden = true
-			content = strings.SplitN(content, "!", 2)[1]
-		} else if strings.HasPrefix(content, "#") {
-			content, count = countHashes(content, count)
-			sub, found := strings.CutPrefix(content, "!")
-			if found {
-				hidden = true
-				content = sub
-			}
-		}
-
-		if !strings.HasPrefix(content, " ") {
-			content = " " + content
-		}
-
-		c := comment{
-			content:   strings.TrimRight(content, " "),
-			hidden:    hidden,
-			hashCount: count,
-			original:  parts[1],
-		}
-
-		return &c
+	idx := findCommentIndex(s)
+	if idx < 0 {
+		return nil
 	}
 
-	return nil
+	var hidden bool
+	count := 1
+
+	content := s[idx+1:]
+
+	if strings.HasPrefix(content, "!") {
+		hidden = true
+		content = strings.SplitN(content, "!", 2)[1]
+	} else if strings.HasPrefix(content, "#") {
+		content, count = countHashes(content, count)
+		sub, found := strings.CutPrefix(content, "!")
+		if found {
+			hidden = true
+			content = sub
+		}
+	}
+
+	if !strings.HasPrefix(content, " ") {
+		content = " " + content
+	}
+
+	c := comment{
+		content:   strings.TrimRight(content, " "),
+		hidden:    hidden,
+		hashCount: count,
+		original:  s[idx+1:],
+	}
+
+	return &c
+}
+
+// wordBreak mirrors webrpc's ridl lexer wordBreak charset: characters that
+// terminate an in-progress word token.
+const wordBreak = "\x00 \t\r\n[]()<>{}=:¿?¡!,\""
+
+func isWordBreak(r rune) bool {
+	return strings.ContainsRune(wordBreak, r)
+}
+
+// isWordBeginning mirrors webrpc's ridl lexer wordBeginning charset: characters
+// that can start (and, once started, continue) a word token.
+func isWordBeginning(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_'
+}
+
+// findCommentIndex returns the byte index of the "#" that starts a comment,
+// or -1 if none is found. It replicates webrpc's ridl lexer behavior: once a
+// word token has started, "#" (like most punctuation) does not break it and
+// is simply part of the word rather than a comment marker. For example, in
+// "v0.0.1#version" the "#" is never lexed as a comment because the preceding
+// characters are still part of the same word token.
+func findCommentIndex(s string) int {
+	inWord := false
+
+	for i, r := range s {
+		if isWordBreak(r) {
+			inWord = false
+			continue
+		}
+
+		if inWord {
+			continue
+		}
+
+		if r == '#' {
+			return i
+		}
+
+		if isWordBeginning(r) {
+			inWord = true
+		}
+	}
+
+	return -1
 }
 
 func parseAndDivideInlineComment(s string) (string, *comment) {

@@ -385,10 +385,10 @@ func (f *form) removeDoubleLines(s string) string {
 }
 
 func reduceSpaces(input string) string {
-	// Find the position of the '#' character
-	hashIndex := strings.Index(input, "#")
+	// Find the position of the comment-starting '#' character, if any.
+	hashIndex := findCommentIndex(input)
 	if hashIndex == -1 {
-		// If there's no '#', just reduce spaces in the entire string
+		// If there's no comment, just reduce spaces in the entire string
 		return reduceSpacesInString(input)
 	}
 
@@ -398,6 +398,9 @@ func reduceSpaces(input string) string {
 
 	// Reduce spaces in the part before the '#'
 	reduced := reduceSpacesInString(beforeHash)
+	if reduced != "" {
+		reduced += " "
+	}
 
 	return reduced + afterHash
 }
