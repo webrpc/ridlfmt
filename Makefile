@@ -15,3 +15,11 @@ rerun-2:
 
 test:
 	go test -v -coverprofile=coverage.txt -covermode=atomic ./...
+
+coverage:
+	go test -coverprofile=coverage.txt -covermode=atomic ./...
+	go tool cover -func=coverage.txt
+
+coverage-html:
+	go test -coverprofile=coverage.txt -covermode=atomic ./...
+	go tool cover -html=coverage.txt -o coverage.html
