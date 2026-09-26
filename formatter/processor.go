@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -90,6 +91,8 @@ func (f *form) formatLine(line string) (string, error) {
 	case sectionName:
 		fallthrough
 	case sectionVersion:
+		fallthrough
+	case sectionBasepath:
 		f.padding = 0
 		line = reduceSpaces(line)
 		s, c := parseAndDivideInlineComment(line)
@@ -144,14 +147,20 @@ func (f *form) formatLine(line string) (string, error) {
 		}
 
 		errorEnding := reduceSpaces(strings.TrimSpace(partsLine[2]))
-		partsEnd := strings.Split(strings.TrimSpace(strings.Split(errorEnding, "#")[0]), " ")
-		if len(partsEnd) != 2 {
-			return "", fmt.Errorf("wrong format of end of an error =(%s)", errorEnding)
-		}
+		httpPart := strings.TrimSpace(strings.Split(errorEnding, "#")[0])
 
-		httpCode, err := strconv.Atoi(strings.Split(partsEnd[1], "#")[0])
-		if err != nil {
-			return "", fmt.Errorf("strconv http code: %w", err)
+		// The HTTP status is optional; webrpc defaults it to 400.
+		var httpCode int
+		if httpPart != "" {
+			partsEnd := strings.Split(httpPart, " ")
+			if len(partsEnd) != 2 {
+				return "", fmt.Errorf("wrong format of end of an error =(%s)", errorEnding)
+			}
+
+			httpCode, err = strconv.Atoi(partsEnd[1])
+			if err != nil {
+				return "", fmt.Errorf("strconv http code: %w", err)
+			}
 		}
 
 		e := ridlError{
@@ -242,6 +251,26 @@ func (f *form) formatLine(line string) (string, error) {
 
 		line = fmt.Sprintf("%s%s", strings.Repeat(" ", f.padding), line)
 		line = c.appendInlineComment(line)
+	case sectionServicePath:
+		f.padding = 2
+		s, c := parseAndDivideInlineComment(line)
+		parts := strings.Split(s, "=")
+		if len(parts) != 2 {
+			return "", fmt.Errorf("unexpected amount of parts=(%d) %s", len(parts), line)
+		}
+
+		line = fmt.Sprintf("%spath = %s", strings.Repeat(" ", f.padding), removeSpaces(parts[1]))
+		line = c.appendInlineComment(line)
+	case sectionRoute:
+		f.padding = 6
+		s, c := parseAndDivideInlineComment(line)
+		parts := strings.Fields(s)
+		if len(parts) != 2 {
+			return "", fmt.Errorf("unexpected amount of parts=(%d) %s", len(parts), line)
+		}
+
+		line = fmt.Sprintf("%s%s %s", strings.Repeat(" ", f.padding), parts[0], parts[1])
+		line = c.appendInlineComment(line)
 	case sectionAnnotation:
 		f.padding = 4
 		s, c := parseAndDivideInlineComment(line)
@@ -297,6 +326,13 @@ func (f *form) parseSection(line string) {
 	case strings.HasPrefix(line, "version"):
 		f.section = sectionVersion
 		f.topLvlSection = sectionVersion
+	case strings.HasPrefix(line, "basepath"):
+		f.section = sectionBasepath
+		f.topLvlSection = sectionBasepath
+	case f.topLvlSection == sectionService && isServicePathLine(line):
+		f.section = sectionServicePath
+	case f.topLvlSection == sectionService && isRouteLine(line):
+		f.section = sectionRoute
 	case strings.HasPrefix(line, "import"):
 		f.section = sectionImport
 		f.topLvlSection = sectionImport
@@ -345,16 +381,17 @@ func (f *form) errorsPrint() string {
 
 	var lines string
 	for i, err := range f.errors {
-		lines += fmt.Sprintf("error %-*d %-*s \"%s\"%s HTTP %-*d",
+		line := fmt.Sprintf("error %-*d %-*s \"%s\"",
 			codeLen,
 			err.code,
 			nameLen,
 			err.name,
 			err.description,
-			strings.Repeat(" ", descLen-len(err.description)),
-			httpLen,
-			err.httpCode,
 		)
+		if err.httpCode != 0 {
+			line += fmt.Sprintf("%s HTTP %-*d", strings.Repeat(" ", descLen-len(err.description)), httpLen, err.httpCode)
+		}
+		lines += line
 
 		if err.inlineComment != nil {
 			lines += fmt.Sprintf(" %s", err.inlineComment.getString())
@@ -493,4 +530,18 @@ func findComma(ic int, s string) (int, bool) {
 	}
 
 	return findComma(ic+c+1, s)
+}
+
+var routeVerbs = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "QUERY"}
+
+// isServicePathLine matches a service's REST path prefix, e.g. "path = /users".
+func isServicePathLine(line string) bool {
+	rest, ok := strings.CutPrefix(line, "path")
+	return ok && strings.HasPrefix(strings.TrimSpace(rest), "=")
+}
+
+// isRouteLine matches a method's REST route, e.g. "GET /{userId}".
+func isRouteLine(line string) bool {
+	verb, rest, ok := strings.Cut(line, " ")
+	return ok && strings.HasPrefix(strings.TrimSpace(rest), "/") && slices.Contains(routeVerbs, verb)
 }
