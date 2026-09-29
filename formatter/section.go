@@ -17,4 +17,7 @@ const (
 	sectionError
 	sectionImport
 	sectionAnnotation
+	sectionBasepath
+	sectionServicePath
+	sectionRoute
 )
