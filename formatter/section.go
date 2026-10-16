@@ -18,6 +18,5 @@ const (
 	sectionImport
 	sectionAnnotation
 	sectionBasepath
-	sectionServicePath
 	sectionRoute
 )
