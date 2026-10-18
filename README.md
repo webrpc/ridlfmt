@@ -21,6 +21,22 @@ You can install RIDLFMT using `go install`:
 go install github.com/webrpc/ridlfmt@latest
 ```
 
+## REST routes
+
+A method can declare zero or more REST routes with `+ VERB /path` lines.
+Routes use absolute paths, and `basepath` at the top level sets the shared prefix.
+
+```ridl
+basepath = /v1
+
+service Intents
+  - CommitIntent(CommitIntentRequest) => (CommitIntentResponse)
+      + POST /intents/{intentId}
+      + POST /Intents/CommitIntent     # backward-compatible with pre-REST API route.
+```
+
+RIDLFMT normalizes the route to `    + POST /intents/{intentId}` and keeps the routes in their written order.
+
 ## Setting in IDE
 
 ### VSCode
