@@ -547,14 +547,17 @@ error 4  UserTooYoung ""               HTTP 404
 error 20 UserNotFound "User not found" HTTP 404
 
 service ExampleService # oof
-    @deprecated:Pong
-    @auth:ApiKeyAuth @whodsa:JWT ## dadsadadsa
   - Ping()
+    + @deprecated:Pong
+    + @auth:ApiKeyAuth
+    + @whodsa:JWT ## dadsadadsa
   - Status() => (status: bool)
-    @internal @public @stringo:" string with spaces  " ##    multiple hashes and spaces
   - Version() => (version: Version)
-    @public
+    + @internal
+    + @public
+    + @stringo:" string with spaces  " ##    multiple hashes and spaces
   - GetUser(header: map<string,string>, userID: uint64) => (code: uint32, user: User)
+    + @public
   - FindUser(s: SearchFilter) => (name: string, user: User) ###! last
   - UpdateUser(User) => (User)
 

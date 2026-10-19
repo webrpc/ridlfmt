@@ -179,6 +179,108 @@ func TestFormat_OldRouteSyntaxRejected(t *testing.T) {
 	}
 }
 
+func TestFormat_MethodAnnotationMigration(t *testing.T) {
+	input := `webrpc = v1
+
+service Users
+  @internal @public @stringo:" a b " ## note
+  - Get(GetUserRequest) => (GetUserResponse)
+      + @auth:admin
+      + GET /users/{id}
+      + @success   200   # ok
+  - Ping()
+      + @deprecated:Use PingV2 instead.
+`
+	expected := `webrpc = v1
+
+service Users
+  - Get(GetUserRequest) => (GetUserResponse)
+    + @internal
+    + @public
+    + @stringo:" a b " ## note
+    + @auth:admin
+    + GET /users/{id}
+    + @success 200 # ok
+  - Ping()
+    + @deprecated:Use PingV2 instead.
+`
+
+	output, err := Format(strings.NewReader(input), false)
+	require.NoError(t, err)
+	assert.Equal(t, expected, output)
+
+	again, err := Format(strings.NewReader(output), false)
+	require.NoError(t, err)
+	assert.Equal(t, output, again)
+}
+
+func TestFormat_AnnotationBeforeNonMethodFlushedUnchanged(t *testing.T) {
+	input := `webrpc = v1
+
+service Users
+  @public
+struct Foo
+  - id: uint64
+`
+	expected := `webrpc = v1
+
+service Users
+    @public
+struct Foo
+  - id: uint64
+`
+
+	output, err := Format(strings.NewReader(input), false)
+	require.NoError(t, err)
+	assert.Equal(t, expected, output)
+}
+
+func TestFormat_AnnotationStashOrdering(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			"comment after the annotation follows it",
+			"webrpc = v1\n\nservice Users\n  @public\n  # after\nstruct Foo\n  - id: uint64\n",
+			"webrpc = v1\n\nservice Users\n    @public\n    # after\nstruct Foo\n  - id: uint64\n",
+		},
+		{
+			"comment before the annotation stays above it",
+			"webrpc = v1\n\nservice Users\n  # before\n  @public\n\nstruct Foo\n  - id: uint64\n",
+			"webrpc = v1\n\nservice Users\n    # before\n    @public\n\nstruct Foo\n  - id: uint64\n",
+		},
+		{
+			"blank line after the annotation stays below it",
+			"webrpc = v1\n\nservice Users\n  @public\n\nstruct Foo\n  - id: uint64\n",
+			"webrpc = v1\n\nservice Users\n    @public\n\nstruct Foo\n  - id: uint64\n",
+		},
+		{
+			"comment between the annotation and the method",
+			"webrpc = v1\n\nservice Users\n  @public\n  # after\n  - Get()\n",
+			"webrpc = v1\n\nservice Users\n  - Get()\n    + @public\n    # after\n",
+		},
+		{
+			"annotation block at EOF",
+			"webrpc = v1\n\nservice Users\n  @public\n  @auth:admin\n",
+			"webrpc = v1\n\nservice Users\n    @public\n    @auth:admin\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			output, err := Format(strings.NewReader(tt.input), false)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, output)
+
+			again, err := Format(strings.NewReader(output), false)
+			require.NoError(t, err)
+			assert.Equal(t, output, again)
+		})
+	}
+}
+
 func TestFormat_ErrorWithoutHTTPStatus(t *testing.T) {
 	input := `webrpc = v1
 

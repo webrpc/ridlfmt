@@ -58,6 +58,9 @@ func TestFindCommentIndex(t *testing.T) {
 		{"foo-bar#", -1},
 		{"# leading comment", 0},
 		{"no comment here", -1},
+		{`+ @see:"#frag"`, -1},
+		{`+ @see:"a:#b"`, -1},
+		{`+ @see:"a" # note`, 11},
 	}
 
 	for _, tt := range tests {

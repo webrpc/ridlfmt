@@ -19,4 +19,5 @@ const (
 	sectionAnnotation
 	sectionBasepath
 	sectionRoute
+	sectionMethodAnnotation
 )
