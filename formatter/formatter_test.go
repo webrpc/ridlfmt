@@ -179,6 +179,220 @@ func TestFormat_OldRouteSyntaxRejected(t *testing.T) {
 	}
 }
 
+func TestFormat_MethodAnnotationMigration(t *testing.T) {
+	input := `webrpc = v1
+
+service Users
+  @internal @public @stringo:" a b " ## note
+  - Get(GetUserRequest) => (GetUserResponse)
+      + @auth:admin
+      + GET /users/{id}
+      + @success   200   # ok
+  - Ping()
+      + @deprecated:Use PingV2 instead.
+`
+	expected := `webrpc = v1
+
+service Users
+  - Get(GetUserRequest) => (GetUserResponse)
+    + @internal
+    + @public
+    + @stringo = " a b " ## note
+    + @auth = admin
+    + GET /users/{id}
+    + @success 200 # ok
+  - Ping()
+    + @deprecated = "Use PingV2 instead."
+`
+
+	output, err := Format(strings.NewReader(input), false)
+	require.NoError(t, err)
+	assert.Equal(t, expected, output)
+
+	again, err := Format(strings.NewReader(output), false)
+	require.NoError(t, err)
+	assert.Equal(t, output, again)
+}
+
+func TestFormat_MethodAnnotationEqualsForm(t *testing.T) {
+	input := `webrpc = v1
+
+service Users
+  - Get(GetUserRequest) => (GetUserResponse)
+    + @auth:ApiKeyAuth
+    + @deprecated = "Use GetUserV2 instead."
+    + @path:C:\temp
+    + @glob:C:\my "dir" here
+    + @see:"https://a.com/#frag"
+    + @success 200|201 # ok
+  - Create(GetUserRequest) => (GetUserResponse)
+    + @cache:60
+    + @success = 201
+  - Ping()
+  - Status() => (status: bool)
+    + @success:204
+`
+	expected := `webrpc = v1
+
+service Users
+  - Get(GetUserRequest) => (GetUserResponse)
+    + @auth = ApiKeyAuth
+    + @deprecated = "Use GetUserV2 instead."
+    + @path = C:\temp
+    + @glob = C:\my "dir" here
+    + @see = "https://a.com/#frag"
+    + @success 200|201 # ok
+  - Create(GetUserRequest) => (GetUserResponse)
+    + @cache = 60
+    + @success 201
+  - Ping()
+  - Status() => (status: bool)
+    + @success 204
+`
+
+	output, err := Format(strings.NewReader(input), false)
+	require.NoError(t, err)
+	assert.Equal(t, expected, output)
+
+	again, err := Format(strings.NewReader(output), false)
+	require.NoError(t, err)
+	assert.Equal(t, output, again)
+}
+
+func TestFormat_MethodAnnotationEscapedQuoteHash(t *testing.T) {
+	// A `\"` inside a quoted value must not end the quote, so the `#` after it
+	// stays part of the value and the line round-trips unchanged.
+	input := `webrpc = v1
+
+service Users
+  - Get() => (ok: bool)
+    + @note = "say \" hello # there \"" # trailing
+`
+
+	output, err := Format(strings.NewReader(input), false)
+	require.NoError(t, err)
+	assert.Equal(t, input, output)
+
+	again, err := Format(strings.NewReader(output), false)
+	require.NoError(t, err)
+	assert.Equal(t, output, again)
+}
+
+func TestFormat_OldSuccessAnnotationAfterStashedAnnotation(t *testing.T) {
+	// `@success` stays above the method; annotations stashed before it still
+	// migrate below, regardless of the order in the source.
+	tests := map[string]string{
+		"success after a stashed annotation":  "webrpc = v1\n\nservice Users\n  @internal\n  @success:200\n  - Ping()\n",
+		"success before a stashed annotation": "webrpc = v1\n\nservice Users\n  @success:200\n  @internal\n  - Ping()\n",
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			expected := "webrpc = v1\n\nservice Users\n    @success:200\n  - Ping()\n    + @internal\n"
+
+			output, err := Format(strings.NewReader(input), false)
+			require.NoError(t, err)
+			assert.Equal(t, expected, output)
+
+			again, err := Format(strings.NewReader(output), false)
+			require.NoError(t, err)
+			assert.Equal(t, output, again)
+		})
+	}
+}
+
+func TestFormat_OldSuccessAnnotationStaysAboveMethod(t *testing.T) {
+	// webrpc reads '+ @success' below a method as a route success code, so the
+	// deprecated above-method form cannot be migrated; it needs a rename.
+	input := `webrpc = v1
+
+service Users
+  @success:200
+  - Ping()
+`
+	expected := `webrpc = v1
+
+service Users
+    @success:200
+  - Ping()
+`
+
+	output, err := Format(strings.NewReader(input), false)
+	require.NoError(t, err)
+	assert.Equal(t, expected, output)
+
+	again, err := Format(strings.NewReader(output), false)
+	require.NoError(t, err)
+	assert.Equal(t, output, again)
+}
+
+func TestFormat_AnnotationBeforeNonMethodFlushedUnchanged(t *testing.T) {
+	input := `webrpc = v1
+
+service Users
+  @public
+struct Foo
+  - id: uint64
+`
+	expected := `webrpc = v1
+
+service Users
+    @public
+struct Foo
+  - id: uint64
+`
+
+	output, err := Format(strings.NewReader(input), false)
+	require.NoError(t, err)
+	assert.Equal(t, expected, output)
+}
+
+func TestFormat_AnnotationStashOrdering(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			"comment after the annotation follows it",
+			"webrpc = v1\n\nservice Users\n  @public\n  # after\nstruct Foo\n  - id: uint64\n",
+			"webrpc = v1\n\nservice Users\n    @public\n    # after\nstruct Foo\n  - id: uint64\n",
+		},
+		{
+			"comment before the annotation stays above it",
+			"webrpc = v1\n\nservice Users\n  # before\n  @public\n\nstruct Foo\n  - id: uint64\n",
+			"webrpc = v1\n\nservice Users\n    # before\n    @public\n\nstruct Foo\n  - id: uint64\n",
+		},
+		{
+			"blank line after the annotation stays below it",
+			"webrpc = v1\n\nservice Users\n  @public\n\nstruct Foo\n  - id: uint64\n",
+			"webrpc = v1\n\nservice Users\n    @public\n\nstruct Foo\n  - id: uint64\n",
+		},
+		{
+			"comment between the annotation and the method",
+			"webrpc = v1\n\nservice Users\n  @public\n  # after\n  - Get()\n",
+			"webrpc = v1\n\nservice Users\n  - Get()\n    + @public\n    # after\n",
+		},
+		{
+			"annotation block at EOF",
+			"webrpc = v1\n\nservice Users\n  @public\n  @auth:admin\n",
+			"webrpc = v1\n\nservice Users\n    @public\n    @auth:admin\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			output, err := Format(strings.NewReader(tt.input), false)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, output)
+
+			again, err := Format(strings.NewReader(output), false)
+			require.NoError(t, err)
+			assert.Equal(t, output, again)
+		})
+	}
+}
+
 func TestFormat_ErrorWithoutHTTPStatus(t *testing.T) {
 	input := `webrpc = v1
 

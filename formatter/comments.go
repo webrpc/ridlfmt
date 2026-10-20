@@ -66,15 +66,34 @@ func isWordBeginning(r rune) bool {
 // findCommentIndex returns the byte index of the "#" that starts a comment,
 // or -1 if none is found. It replicates webrpc's ridl lexer behavior: once a
 // word token has started, "#" (like most punctuation) does not break it and
-// is simply part of the word rather than a comment marker. For example, in
-// "v0.0.1#version" the "#" is never lexed as a comment because the preceding
-// characters are still part of the same word token.
+// is simply part of the word rather than a comment marker, and a "#" inside a
+// quoted string is content. For example, in "v0.0.1#version" the "#" is never
+// lexed as a comment because the preceding characters are still part of the
+// same word token.
 func findCommentIndex(s string) int {
 	inWord := false
+	inQuote := false
+	escaped := false
 
 	for i, r := range s {
+		if inQuote {
+			if escaped {
+				escaped = false
+				continue
+			}
+
+			if r == '\\' {
+				escaped = true
+				continue
+			}
+
+			inQuote = r != '"'
+			continue
+		}
+
 		if isWordBreak(r) {
 			inWord = false
+			inQuote = r == '"'
 			continue
 		}
 

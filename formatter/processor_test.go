@@ -132,26 +132,32 @@ func TestRemoveDoubleLines(t *testing.T) {
 func TestParseSection(t *testing.T) {
 	tests := []struct {
 		line     string
+		topLvl   section
 		expected section
 	}{
-		{"webrpc = v1", sectionWebRPC},
-		{"name = foo", sectionName},
-		{"version = v1", sectionVersion},
-		{"import foo", sectionImport},
-		{"# comment", sectionComment},
-		{"enum Foo: string", sectionEnum},
-		{"struct Foo", sectionStruct},
-		{"service Foo", sectionService},
-		{"error 1 Foo \"bar\" HTTP 404", sectionError},
-		{"- field", sectionField},
-		{"+ tag", sectionTag},
-		{"@ann", sectionAnnotation},
-		{"totally unknown", sectionUnknown},
+		{"webrpc = v1", sectionUnknown, sectionWebRPC},
+		{"name = foo", sectionUnknown, sectionName},
+		{"version = v1", sectionUnknown, sectionVersion},
+		{"import foo", sectionUnknown, sectionImport},
+		{"# comment", sectionUnknown, sectionComment},
+		{"enum Foo: string", sectionUnknown, sectionEnum},
+		{"struct Foo", sectionUnknown, sectionStruct},
+		{"service Foo", sectionUnknown, sectionService},
+		{"error 1 Foo \"bar\" HTTP 404", sectionUnknown, sectionError},
+		{"- field", sectionUnknown, sectionField},
+		{"+ tag", sectionUnknown, sectionTag},
+		{"@ann", sectionUnknown, sectionAnnotation},
+		{"+ GET /users", sectionService, sectionRoute},
+		{"+ @ann", sectionService, sectionMethodAnnotation},
+		{"+@ann", sectionService, sectionMethodAnnotation},
+		{"+ @success 200", sectionService, sectionMethodAnnotation},
+		{"+ @ann", sectionStruct, sectionTag},
+		{"totally unknown", sectionUnknown, sectionUnknown},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.line, func(t *testing.T) {
-			f := &form{}
+			f := &form{topLvlSection: tt.topLvl}
 			f.parseSection(tt.line)
 			assert.Equal(t, tt.expected, f.section)
 		})
@@ -394,10 +400,179 @@ func TestFormatLine_Annotation(t *testing.T) {
 		assert.Equal(t, `    @internal @public @stringo:"a b"`, line)
 	})
 
-	t.Run("wrong annotation part count errors", func(t *testing.T) {
+	t.Run("colon inside a quoted value stays in the value", func(t *testing.T) {
 		f := &form{}
-		_, err := f.formatLine("@foo:bar:baz")
-		require.Error(t, err)
+		line, err := f.formatLine(`@see:"https://example.com/a:b"`)
+		require.NoError(t, err)
+		assert.Equal(t, `    @see:"https://example.com/a:b"`, line)
+	})
+}
+
+func TestParseAnnotationTokens(t *testing.T) {
+	t.Run("colon inside a quoted value", func(t *testing.T) {
+		tokens := parseAnnotationTokens(`@see:"https://example.com/a:b"`)
+		assert.Equal(t, []string{`@see:"https://example.com/a:b"`}, tokens)
+	})
+
+	t.Run("multiple annotations on one line", func(t *testing.T) {
+		tokens := parseAnnotationTokens(`@internal @public @stringo: " a b "`)
+		assert.Equal(t, []string{"@internal", "@public", `@stringo:" a b "`}, tokens)
+	})
+
+	t.Run("value-less annotation", func(t *testing.T) {
+		tokens := parseAnnotationTokens("@   internal   ")
+		assert.Equal(t, []string{"@internal"}, tokens)
+	})
+
+	t.Run("multi-word unquoted value keeps its raw spaces", func(t *testing.T) {
+		tokens := parseAnnotationTokens(`@deprecated:Use PingV2 instead.`)
+		assert.Equal(t, []string{`@deprecated:Use PingV2 instead.`}, tokens)
+	})
+}
+
+func TestFormatLine_MethodAnnotation(t *testing.T) {
+	tests := []struct {
+		name     string
+		line     string
+		expected string
+	}{
+		{"flag annotation", "+ @public", "    + @public"},
+		{"no space after plus", "+@auth:admin", "    + @auth = admin"},
+		{"spaces around name and colon", "+   @auth  :  admin", "    + @auth = admin"},
+		{"colon form is normalized to equals", "+ @auth:ApiKeyAuth", "    + @auth = ApiKeyAuth"},
+		{"equals form is kept", "+ @auth = ApiKeyAuth", "    + @auth = ApiKeyAuth"},
+		{"spaces around the equals sign", "+ @auth\t=\tApiKeyAuth", "    + @auth = ApiKeyAuth"},
+		{"multi-word value is quoted", "+ @deprecated:Use GetUserV2 instead.", `    + @deprecated = "Use GetUserV2 instead."`},
+		{"multi-word value with quotes and backslashes is left bare", `+ @path:C:\my "dir" here`, `    + @path = C:\my "dir" here`},
+		{"multi-word value with a backslash is left bare", `+ @path:C:\my dir`, `    + @path = C:\my dir`},
+		{"quote inside an otherwise bare value is left bare", `+ @a = "foo"bar`, `    + @a = "foo"bar`},
+		{"multi-word quoted value with a hash", `+ @see:"a b # c"`, `    + @see = "a b # c"`},
+		{"backslash value stays bare", `+ @path:C:\temp`, `    + @path = C:\temp`},
+		{"bare value with an equals sign inside", "+ @query = a=b", "    + @query = a=b"},
+		{"quoted value is kept verbatim", `+ @see:"https://a.com/#frag"`, `    + @see = "https://a.com/#frag"`},
+		{"quoted hash at the start of the value", `+ @see:"#frag"`, `    + @see = "#frag"`},
+		{"quoted hash after a colon", `+ @see:"a:#b"`, `    + @see = "a:#b"`},
+		{"quoted value with spaces", `+ @stringo: " a b c "`, `    + @stringo = " a b c "`},
+		{"empty value becomes value-less", "+ @internal:", "    + @internal"},
+		{"inline comment", "+ @deprecated:Pong   # use V2", "    + @deprecated = Pong # use V2"},
+		{"hidden inline comment", "+ @deprecated:Pong ##! hidden", "    + @deprecated = Pong ##! hidden"},
+		{"success code", "+ @success 200", "    + @success 200"},
+		{"success codes with extra spaces", "+ @success   200|201", "    + @success 200|201"},
+		{"success code in colon form", "+ @success:200", "    + @success 200"},
+		{"success code in equals form", "+ @success = 200", "    + @success 200"},
+		{"success code in spaced colon form", "+ @success : 200", "    + @success 200"},
+		{"success codes with spaces around the bar", "+ @success 200 | 201", "    + @success 200|201"},
+		{"empty success value keeps the separator", "+ @success =", "    + @success ="},
+		{"empty success value in colon form keeps a separator", "+ @success:", "    + @success ="},
+		{"multiple annotations split one per line", "+ @a @b", "    + @a\n    + @b"},
+		{"multiple annotations with values", "+ @a @b:val", "    + @a\n    + @b = val"},
+		{"value only ends the split", "+ @deprecated:Use @home instead", `    + @deprecated = "Use @home instead"`},
+		{"tab in the name", "+ @auth\t:admin", "    + @auth = admin"},
+		{"tab between annotations", "+ @a\t@b", "    + @a\n    + @b"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &form{topLvlSection: sectionService}
+			line, err := f.formatLine(tt.line)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, line)
+		})
+	}
+}
+
+func TestFormatLine_AnnotationMigration(t *testing.T) {
+	t.Run("single annotation moves below the method", func(t *testing.T) {
+		f := &form{topLvlSection: sectionService}
+		line, err := f.formatLine("@deprecated:Pong")
+		require.NoError(t, err)
+		assert.Equal(t, "", line)
+
+		line, err = f.formatLine("- Ping()")
+		require.NoError(t, err)
+		assert.Equal(t, "  - Ping()\n    + @deprecated = Pong", line)
+	})
+
+	t.Run("multi-word old value is quoted after migration", func(t *testing.T) {
+		f := &form{topLvlSection: sectionService}
+		_, err := f.formatLine("@deprecated:Use PingV2 instead.")
+		require.NoError(t, err)
+
+		line, err := f.formatLine("- Ping()")
+		require.NoError(t, err)
+		assert.Equal(t, "  - Ping()\n    + @deprecated = \"Use PingV2 instead.\"", line)
+	})
+
+	t.Run("multi-word old value with a backslash is left bare", func(t *testing.T) {
+		f := &form{topLvlSection: sectionService}
+		_, err := f.formatLine(`@glob:C:\my dir`)
+		require.NoError(t, err)
+
+		line, err := f.formatLine("- Ping()")
+		require.NoError(t, err)
+		assert.Equal(t, `  - Ping()
+    + @glob = C:\my dir`, line)
+	})
+
+	t.Run("multiple annotations split one per line, comment on the last", func(t *testing.T) {
+		f := &form{topLvlSection: sectionService}
+		_, err := f.formatLine(`@internal @public @stringo:" a b " ## note`)
+		require.NoError(t, err)
+
+		line, err := f.formatLine("- Get()")
+		require.NoError(t, err)
+		assert.Equal(t, "  - Get()\n    + @internal\n    + @public\n    + @stringo = \" a b \" ## note", line)
+	})
+
+	t.Run("success annotation stays above the method", func(t *testing.T) {
+		// webrpc reads '+ @success' below a method as a route success code, so
+		// the annotation must be renamed there; a formatter cannot pick a name.
+		f := &form{topLvlSection: sectionService}
+		line, err := f.formatLine("@success:201")
+		require.NoError(t, err)
+		assert.Equal(t, "    @success:201", line)
+		assert.Empty(t, f.pending)
+
+		line, err = f.formatLine("- Create()")
+		require.NoError(t, err)
+		assert.Equal(t, "  - Create()", line)
+	})
+
+	t.Run("success next to another annotation keeps the whole line above", func(t *testing.T) {
+		f := &form{topLvlSection: sectionService}
+		line, err := f.formatLine("@internal @success:201")
+		require.NoError(t, err)
+		assert.Equal(t, "    @internal @success:201", line)
+		assert.Empty(t, f.pending)
+	})
+
+	t.Run("colon inside a quoted value stays in the value", func(t *testing.T) {
+		f := &form{topLvlSection: sectionService}
+		_, err := f.formatLine(`@see:"https://example.com/a:b"`)
+		require.NoError(t, err)
+
+		line, err := f.formatLine("- Get()")
+		require.NoError(t, err)
+		assert.Equal(t, `  - Get()
+    + @see = "https://example.com/a:b"`, line)
+	})
+
+	t.Run("quoted hash stays in the value", func(t *testing.T) {
+		f := &form{topLvlSection: sectionService}
+		_, err := f.formatLine(`@see:"#frag"`)
+		require.NoError(t, err)
+
+		line, err := f.formatLine("- Get()")
+		require.NoError(t, err)
+		assert.Equal(t, "  - Get()\n    + @see = \"#frag\"", line)
+	})
+
+	t.Run("outside a service annotations keep the old format", func(t *testing.T) {
+		f := &form{}
+		line, err := f.formatLine("@deprecated:Pong")
+		require.NoError(t, err)
+		assert.Equal(t, "    @deprecated:Pong", line)
+		assert.Empty(t, f.pending)
 	})
 }
 
