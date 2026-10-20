@@ -73,9 +73,20 @@ func isWordBeginning(r rune) bool {
 func findCommentIndex(s string) int {
 	inWord := false
 	inQuote := false
+	escaped := false
 
 	for i, r := range s {
 		if inQuote {
+			if escaped {
+				escaped = false
+				continue
+			}
+
+			if r == '\\' {
+				escaped = true
+				continue
+			}
+
 			inQuote = r != '"'
 			continue
 		}

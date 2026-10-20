@@ -18,6 +18,9 @@ type form struct {
 	section       section
 	topLvlSection section
 	pending       []pendingAnnotation
+	// keepAnnotation marks a deprecated above-method annotation that stays in
+	// the old form; webrpc reads '+ @success' below a method as a route code.
+	keepAnnotation bool
 	// trailer holds comment and blank lines seen after a stashed annotation;
 	// they are written out where the annotation block lands.
 	trailer []string
@@ -107,7 +110,7 @@ func (f *form) processLines(inputFile io.Reader) (string, error) {
 
 		// Annotations below a method line are written as-is; above-method ones
 		// under a service are stashed until we see the method they belong to.
-		stashed := f.section == sectionAnnotation && f.topLvlSection == sectionService
+		stashed := f.section == sectionAnnotation && f.topLvlSection == sectionService && !f.keepAnnotation
 		if stashed {
 			// Comments above the annotation stay above it in the old form.
 			output.WriteString(f.commentsPrint())
@@ -117,7 +120,12 @@ func (f *form) processLines(inputFile io.Reader) (string, error) {
 				output.WriteString(line + "\n")
 				output.WriteString(f.trailerPrint())
 			} else {
-				output.WriteString(f.pendingPrint())
+				// A kept `@success` line stays above the method; the annotations
+				// stashed before it still migrate below it.
+				if !f.keepAnnotation {
+					output.WriteString(f.pendingPrint())
+				}
+
 				output.WriteString(line + "\n")
 			}
 		}
@@ -144,6 +152,8 @@ func (f *form) processLines(inputFile io.Reader) (string, error) {
 
 func (f *form) formatLine(line string) (string, error) {
 	line = strings.TrimSpace(line)
+	f.keepAnnotation = false
+
 	if line == "" {
 		f.section = sectionEmpty
 		return line, nil
@@ -336,7 +346,10 @@ func (f *form) formatLine(line string) (string, error) {
 
 		tokens := parseAnnotationTokens(s)
 
-		if f.topLvlSection == sectionService {
+		// webrpc reads '+ @success' below a method as a route success code, so
+		// the deprecated form stays above it; only a rename can fix it.
+		f.keepAnnotation = f.topLvlSection == sectionService && hasSuccessAnnotation(tokens)
+		if f.topLvlSection == sectionService && !f.keepAnnotation {
 			f.pending = append(f.pending, newPendingAnnotation(tokens, c, f.padding))
 			return "", nil
 		}
@@ -488,7 +501,7 @@ func reduceSpacesInString(s string) string {
 }
 
 func removeSpaces(input string) string {
-	return strings.ReplaceAll(input, " ", "")
+	return strings.NewReplacer(" ", "", "\t", "").Replace(input)
 }
 
 func formatMethodArguments(s string) (string, error) {
@@ -622,10 +635,24 @@ func (f *form) trailerPrint() string {
 	return s
 }
 
+// hasSuccessAnnotation reports whether a group of deprecated above-method
+// annotations contains `@success`.
+func hasSuccessAnnotation(tokens []string) bool {
+	for _, token := range tokens {
+		name, _, _ := strings.Cut(strings.TrimPrefix(token, "@"), ":")
+		if removeSpaces(name) == "success" {
+			return true
+		}
+	}
+
+	return false
+}
+
 // parseAnnotationTokens splits the deprecated above-method form into one
-// normalized `@name[:value]` token per annotation, keeping the old value
-// semantics (unquoted values are space-stripped). The name/value split is on
-// the first colon only, since values may contain colons.
+// normalized `@name[:value]` token per annotation. The value stays raw so the
+// formatter can quote it later; space-stripping here would corrupt multi-word
+// values before the quoter sees them. The name/value split is on the first
+// colon only, since values may contain colons.
 func parseAnnotationTokens(s string) []string {
 	parts := strings.Split(s, "@")
 
@@ -640,18 +667,13 @@ func parseAnnotationTokens(s string) []string {
 			continue
 		}
 
-		value = strings.TrimSpace(value)
-		if !strings.HasPrefix(value, `"`) && !strings.HasSuffix(value, `"`) {
-			value = removeSpaces(value)
-		}
-
-		tokens = append(tokens, fmt.Sprintf("@%s:%s", name, value))
+		tokens = append(tokens, fmt.Sprintf("@%s:%s", name, strings.TrimSpace(value)))
 	}
 
 	return tokens
 }
 
-// formatMethodAnnotation normalizes a `+ @name[:value]` meta-line. webrpc
+// formatMethodAnnotation normalizes a `+ @name[ = value]` meta-line. webrpc
 // rejects more than one annotation per line, so `+ @a @b` is split.
 func formatMethodAnnotation(line string, padding int) string {
 	s, c := parseAndDivideInlineComment(line)
@@ -667,7 +689,7 @@ func formatMethodAnnotation(line string, padding int) string {
 }
 
 // splitMethodAnnotations splits a `+ @a @b` body into one token per
-// annotation. A value after ':' runs to the end of the line, so only a
+// annotation. A value after ':' or '=' runs to the end of the line, so only a
 // value-less annotation can be followed by another '@'.
 func splitMethodAnnotations(body string) []string {
 	var tokens []string
@@ -680,14 +702,8 @@ func splitMethodAnnotations(body string) []string {
 
 		body = body[1:]
 
-		i := strings.IndexAny(body, ": \t")
+		i := strings.IndexAny(body, ": \t=")
 		if i < 0 {
-			tokens = append(tokens, "@"+body)
-
-			break
-		}
-
-		if body[i] == ':' {
 			tokens = append(tokens, "@"+body)
 
 			break
@@ -695,6 +711,12 @@ func splitMethodAnnotations(body string) []string {
 
 		name := body[:i]
 		rest := strings.TrimLeft(body[i:], " \t")
+		if rest != "" && (rest[0] == ':' || rest[0] == '=') {
+			tokens = append(tokens, "@"+name+rest)
+
+			break
+		}
+
 		if !strings.HasPrefix(rest, "@") {
 			// `+ @success 200` keeps the space-separated value webrpc requires.
 			tokens = append(tokens, "@"+name+" "+rest)
@@ -709,29 +731,64 @@ func splitMethodAnnotations(body string) []string {
 	return tokens
 }
 
-// formatAnnotationToken formats one `@name[:value]` token. The value runs to
-// the end of the line, so only the space after the colon is trimmed.
+// formatAnnotationToken formats one annotation token as `@name` or
+// `@name = value`. A colon- or space-separated value is normalized to '=',
+// except for `@success`, which webrpc reserves for route status codes.
 func formatAnnotationToken(token string) string {
-	body := strings.TrimPrefix(token, "@")
+	body := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(token), "@"))
 
-	i := strings.IndexAny(body, ": \t")
+	i := strings.IndexAny(body, ": \t=")
 	if i < 0 {
-		return "@" + body
+		return "@" + removeSpaces(body)
 	}
 
-	name, rest := body[:i], strings.TrimLeft(body[i:], " \t")
-	if !strings.HasPrefix(rest, ":") {
-		return "@" + name + " " + strings.Join(strings.Fields(rest), " ")
+	name := removeSpaces(body[:i])
+	rest := strings.TrimLeft(body[i:], " \t")
+	if rest != "" && (rest[0] == ':' || rest[0] == '=') {
+		rest = rest[1:]
 	}
 
-	value := strings.TrimSpace(rest[1:])
-	// webrpc reserves `+ @success NNN` for route status codes, so the colon
-	// form of that annotation is rejected.
+	// webrpc reserves `+ @success NNN` for route status codes, so the '=' form
+	// of that annotation is rejected. The parser wants a single `200|201`
+	// token, so no spaces may survive.
 	if name == "success" {
-		return "@success " + value
+		codes := removeSpaces(rest)
+		if codes == "" {
+			// Do not collapse an empty code to the bare annotation name; keep
+			// the separator and let the parser report the missing code.
+			return "@success ="
+		}
+
+		return "@success " + codes
 	}
 
-	return "@" + name + ":" + value
+	// `+ @a =` is a parse error, so an empty value collapses to a bare name.
+	value := strings.TrimSpace(rest)
+	if value == "" {
+		return "@" + name
+	}
+
+	return "@" + name + " = " + formatAnnotationValue(value)
+}
+
+// formatAnnotationValue renders an annotation value so webrpc re-reads it
+// exactly. A bare value is a single word; a multi-word one must be quoted, but
+// only when it holds no quote or backslash: webrpc cannot represent those in a
+// quoted value, so such values are left for the parser to reject on its own.
+func formatAnnotationValue(value string) string {
+	if len(value) > 1 && strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`) {
+		return value
+	}
+
+	if strings.ContainsAny(value, " \t") {
+		if strings.ContainsAny(value, `"\`) {
+			return value
+		}
+
+		return `"` + value + `"`
+	}
+
+	return value
 }
 
 var routeVerbs = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "QUERY"}
@@ -742,7 +799,7 @@ func isRouteLine(line string) bool {
 	return len(parts) >= 2 && slices.Contains(routeVerbs, parts[0]) && strings.HasPrefix(parts[1], "/")
 }
 
-// isMethodAnnotationLine matches a method's `+ @name[:value]` meta-line.
+// isMethodAnnotationLine matches a method's `+ @name[ = value]` meta-line.
 func isMethodAnnotationLine(line string) bool {
 	return strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(line, "+")), "@")
 }

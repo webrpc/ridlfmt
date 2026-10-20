@@ -548,14 +548,14 @@ error 20 UserNotFound "User not found" HTTP 404
 
 service ExampleService # oof
   - Ping()
-    + @deprecated:Pong
-    + @auth:ApiKeyAuth
-    + @whodsa:JWT ## dadsadadsa
+    + @deprecated = Pong
+    + @auth = ApiKeyAuth
+    + @whodsa = "J    W    T" ## dadsadadsa
   - Status() => (status: bool)
   - Version() => (version: Version)
     + @internal
     + @public
-    + @stringo:" string with spaces  " ##    multiple hashes and spaces
+    + @stringo = " string with spaces  " ##    multiple hashes and spaces
   - GetUser(header: map<string,string>, userID: uint64) => (code: uint32, user: User)
     + @public
   - FindUser(s: SearchFilter) => (name: string, user: User) ###! last

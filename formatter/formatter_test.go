@@ -197,12 +197,124 @@ service Users
   - Get(GetUserRequest) => (GetUserResponse)
     + @internal
     + @public
-    + @stringo:" a b " ## note
-    + @auth:admin
+    + @stringo = " a b " ## note
+    + @auth = admin
     + GET /users/{id}
     + @success 200 # ok
   - Ping()
-    + @deprecated:Use PingV2 instead.
+    + @deprecated = "Use PingV2 instead."
+`
+
+	output, err := Format(strings.NewReader(input), false)
+	require.NoError(t, err)
+	assert.Equal(t, expected, output)
+
+	again, err := Format(strings.NewReader(output), false)
+	require.NoError(t, err)
+	assert.Equal(t, output, again)
+}
+
+func TestFormat_MethodAnnotationEqualsForm(t *testing.T) {
+	input := `webrpc = v1
+
+service Users
+  - Get(GetUserRequest) => (GetUserResponse)
+    + @auth:ApiKeyAuth
+    + @deprecated = "Use GetUserV2 instead."
+    + @path:C:\temp
+    + @glob:C:\my "dir" here
+    + @see:"https://a.com/#frag"
+    + @success 200|201 # ok
+  - Create(GetUserRequest) => (GetUserResponse)
+    + @cache:60
+    + @success = 201
+  - Ping()
+  - Status() => (status: bool)
+    + @success:204
+`
+	expected := `webrpc = v1
+
+service Users
+  - Get(GetUserRequest) => (GetUserResponse)
+    + @auth = ApiKeyAuth
+    + @deprecated = "Use GetUserV2 instead."
+    + @path = C:\temp
+    + @glob = C:\my "dir" here
+    + @see = "https://a.com/#frag"
+    + @success 200|201 # ok
+  - Create(GetUserRequest) => (GetUserResponse)
+    + @cache = 60
+    + @success 201
+  - Ping()
+  - Status() => (status: bool)
+    + @success 204
+`
+
+	output, err := Format(strings.NewReader(input), false)
+	require.NoError(t, err)
+	assert.Equal(t, expected, output)
+
+	again, err := Format(strings.NewReader(output), false)
+	require.NoError(t, err)
+	assert.Equal(t, output, again)
+}
+
+func TestFormat_MethodAnnotationEscapedQuoteHash(t *testing.T) {
+	// A `\"` inside a quoted value must not end the quote, so the `#` after it
+	// stays part of the value and the line round-trips unchanged.
+	input := `webrpc = v1
+
+service Users
+  - Get() => (ok: bool)
+    + @note = "say \" hello # there \"" # trailing
+`
+
+	output, err := Format(strings.NewReader(input), false)
+	require.NoError(t, err)
+	assert.Equal(t, input, output)
+
+	again, err := Format(strings.NewReader(output), false)
+	require.NoError(t, err)
+	assert.Equal(t, output, again)
+}
+
+func TestFormat_OldSuccessAnnotationAfterStashedAnnotation(t *testing.T) {
+	// `@success` stays above the method; annotations stashed before it still
+	// migrate below, regardless of the order in the source.
+	tests := map[string]string{
+		"success after a stashed annotation":  "webrpc = v1\n\nservice Users\n  @internal\n  @success:200\n  - Ping()\n",
+		"success before a stashed annotation": "webrpc = v1\n\nservice Users\n  @success:200\n  @internal\n  - Ping()\n",
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			expected := "webrpc = v1\n\nservice Users\n    @success:200\n  - Ping()\n    + @internal\n"
+
+			output, err := Format(strings.NewReader(input), false)
+			require.NoError(t, err)
+			assert.Equal(t, expected, output)
+
+			again, err := Format(strings.NewReader(output), false)
+			require.NoError(t, err)
+			assert.Equal(t, output, again)
+		})
+	}
+}
+
+func TestFormat_OldSuccessAnnotationStaysAboveMethod(t *testing.T) {
+	// webrpc reads '+ @success' below a method as a route success code, so the
+	// deprecated above-method form cannot be migrated; it needs a rename.
+	input := `webrpc = v1
+
+service Users
+  @success:200
+  - Ping()
+`
+	expected := `webrpc = v1
+
+service Users
+    @success:200
+  - Ping()
 `
 
 	output, err := Format(strings.NewReader(input), false)

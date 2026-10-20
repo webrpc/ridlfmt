@@ -61,6 +61,9 @@ func TestFindCommentIndex(t *testing.T) {
 		{`+ @see:"#frag"`, -1},
 		{`+ @see:"a:#b"`, -1},
 		{`+ @see:"a" # note`, 11},
+		// A `\"` must not end the quote, so the first `#` stays in the value.
+		{`+ @note = "say \" hello # there \""`, -1},
+		{`+ @note = "say \" hello # there \"" # trailing`, 36},
 	}
 
 	for _, tt := range tests {
@@ -94,6 +97,15 @@ func TestParseComment_HiddenAndHashCount(t *testing.T) {
 			assert.Equal(t, tt.expectedHashCount, c.hashCount)
 		})
 	}
+}
+
+func TestParseAndDivideInlineComment_EscapedQuoteKeepsHashInValue(t *testing.T) {
+	in := `+ @note = "say \" hello # there \"" # trailing`
+
+	s, c := parseAndDivideInlineComment(in)
+	require.NotNil(t, c)
+	assert.Equal(t, " trailing", c.content)
+	assert.Equal(t, `+ @note = "say \" hello # there \""`, s)
 }
 
 func TestParseAndDivideInlineComment(t *testing.T) {
