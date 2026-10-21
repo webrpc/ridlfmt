@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -326,6 +327,7 @@ func TestHelperProcess(t *testing.T) {
 	os.Args = append([]string{"ridlfmt"}, args...)
 
 	main()
+	os.Exit(0)
 }
 
 func runMainSubprocess(t *testing.T, args []string, stdin string, connectStdin bool) (stdout, stderr string, exitCode int) {
@@ -380,6 +382,112 @@ func TestSubprocess_PipeFormatError(t *testing.T) {
 	_, stderr, code := runMainSubprocess(t, nil, "webrpc v1\n", true)
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stderr, "Error processing input from pipe")
+}
+
+func TestRecursivePaths(t *testing.T) {
+	for _, path := range []string{".", "./...", "schemas", "schemas/..."} {
+		for _, write := range []bool{false, true} {
+			t.Run(fmtTestName(path, write), func(t *testing.T) {
+				root := t.TempDir()
+				t.Chdir(root)
+				require.NoError(t, os.MkdirAll("schemas/nested", 0755))
+				files := []string{"schemas/first.ridl", "schemas/nested/second.ridl"}
+				for _, file := range files {
+					require.NoError(t, os.WriteFile(file, []byte(testInput), 0644))
+				}
+				// Invalid content must never be passed to the formatter.
+				require.NoError(t, os.WriteFile("schemas/notes.txt", []byte("webrpc v1\n"), 0644))
+				require.NoError(t, os.WriteFile("schemas/.hidden.ridl", []byte("webrpc v1\n"), 0644))
+				require.NoError(t, os.Mkdir("schemas/directory.ridl", 0755))
+
+				args := []string{"-s"}
+				if write {
+					args = append(args, "-w")
+				}
+				args = append(args, path)
+				// Explicit paths must win even when stdin is a pipe.
+				stdout, stderr, code := runMainSubprocess(t, args, "webrpc v1\n", true)
+				require.Equal(t, 0, code, stderr)
+				if write {
+					assert.Empty(t, stdout)
+				} else {
+					assert.Equal(t, strings.Repeat(expectedOutput+"\n", 2), stdout)
+				}
+				for _, file := range files {
+					data, err := os.ReadFile(file)
+					require.NoError(t, err)
+					want := testInput
+					if write {
+						want = expectedOutput
+					}
+					assert.Equal(t, want, string(data))
+				}
+				data, err := os.ReadFile("schemas/notes.txt")
+				require.NoError(t, err)
+				assert.Equal(t, "webrpc v1\n", string(data))
+			})
+		}
+	}
+}
+
+func fmtTestName(path string, write bool) string {
+	if write {
+		return path + "/write"
+	}
+	return path + "/stdout"
+}
+
+func TestExpandFileArgs(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	require.NoError(t, os.MkdirAll("schemas/nested", 0755))
+	for _, file := range []string{"schemas/a.ridl", "schemas/nested/b.ridl", "explicit.txt"} {
+		require.NoError(t, os.WriteFile(file, nil, 0644))
+	}
+
+	t.Run("mixed and overlapping paths", func(t *testing.T) {
+		files, err := expandFileArgs([]string{"explicit.txt", "schemas/...", "schemas/a.ridl", filepath.Join(root, "schemas", "...")})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"explicit.txt", "schemas/a.ridl", "schemas/nested/b.ridl"}, files)
+	})
+	t.Run("explicit hidden file", func(t *testing.T) {
+		require.NoError(t, os.WriteFile(".hidden.ridl", nil, 0644))
+		files, err := expandFileArgs([]string{".hidden.ridl"})
+		require.NoError(t, err)
+		assert.Equal(t, []string{".hidden.ridl"}, files)
+	})
+	t.Run("empty directory", func(t *testing.T) {
+		require.NoError(t, os.Mkdir("empty", 0755))
+		for _, path := range []string{"empty", "empty/..."} {
+			files, err := expandFileArgs([]string{path})
+			require.NoError(t, err)
+			assert.Empty(t, files)
+			stdout, stderr, code := runMainSubprocess(t, []string{path}, "webrpc v1\n", true)
+			assert.Equal(t, 0, code, stderr)
+			assert.Empty(t, stdout)
+		}
+	})
+	t.Run("missing root", func(t *testing.T) {
+		_, err := expandFileArgs([]string{"missing/..."})
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "expand path")
+		_, stderr, code := runMainSubprocess(t, []string{"missing/..."}, "", false)
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr, "expand path")
+	})
+	t.Run("root is a file", func(t *testing.T) {
+		_, err := expandFileArgs([]string{"schemas/a.ridl/..."})
+		require.ErrorContains(t, err, "not a directory")
+	})
+	t.Run("symbolic links are not followed", func(t *testing.T) {
+		if err := os.Symlink("nested", "schemas/link"); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		require.NoError(t, os.Symlink("a.ridl", "schemas/link.ridl"))
+		files, err := expandFileArgs([]string{"schemas/..."})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"schemas/a.ridl", "schemas/nested/b.ridl"}, files)
+	})
 }
 
 const testInput string = `
