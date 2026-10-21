@@ -94,9 +94,8 @@ service ExampleService # deprecated above-method annotations are moved below the
 @public
    - GetUser   (   header   :    map  <   string   ,   string   >   ,   userID   :    uint64   )   =>   (  code  :   uint32   ,   user  :   User  )
       + GET    /users/{userID}
-      + @success 200
       + POST   /ExampleService/GetUser # compatibility route
-      + @success 200
+      + @success 200 # applies to both routes
     - FindUser(s :SearchFilter) => (name: string, user: User) ###! last
 
     -    stream    Re cv   (req  :   string   )
