@@ -5,8 +5,11 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/webrpc/ridlfmt/formatter"
 )
@@ -42,6 +45,11 @@ func runRidlfmt(flagSet *flag.FlagSet, args []string) error {
 		os.Exit(1)
 	}
 
+	fileArgs, err := expandFileArgs(fileArgs)
+	if err != nil {
+		return err
+	}
+
 	if *writeFlag {
 		for _, fileName := range fileArgs {
 			err := formatAndWriteToFile(fileName, *sortErrorsFlag)
@@ -50,7 +58,7 @@ func runRidlfmt(flagSet *flag.FlagSet, args []string) error {
 			}
 		}
 	} else {
-		if isInputFromPipe() {
+		if len(flagSet.Args()) == 0 && isInputFromPipe() {
 			err := formatAndPrintFromPipe(*sortErrorsFlag)
 			if err != nil {
 				log.Fatalf("Error processing input from pipe: %v", err)
@@ -66,6 +74,57 @@ func runRidlfmt(flagSet *flag.FlagSet, args []string) error {
 	}
 
 	return nil
+}
+
+// expandFileArgs expands directories and directory/... to regular .ridl files.
+// WalkDir visits files in lexical order and does not follow symbolic links.
+func expandFileArgs(args []string) ([]string, error) {
+	var files []string
+	seen := make(map[string]bool)
+	addFile := func(path string) error {
+		key, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+		if !seen[key] {
+			seen[key] = true
+			files = append(files, path)
+		}
+		return nil
+	}
+	for _, arg := range args {
+		root := arg
+		pattern := filepath.Base(arg) == "..."
+		if pattern {
+			root = filepath.Dir(arg)
+		}
+		info, err := os.Stat(root)
+		if !pattern && (err != nil || !info.IsDir()) {
+			if err := addFile(arg); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("expand path %s: %w", arg, err)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("expand path %s: %s is not a directory", arg, root)
+		}
+		err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.Type().IsRegular() && !strings.HasPrefix(entry.Name(), ".") && filepath.Ext(path) == ".ridl" {
+				return addFile(path)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("expand path %s: %w", arg, err)
+		}
+	}
+	return files, nil
 }
 
 func isInputFromPipe() bool {
@@ -132,6 +191,8 @@ func formatAndPrintFromPipe(sortErrorsFlag bool) error {
 
 func usage() {
 	fmt.Fprintf(os.Stderr, `usage: ridlfmt [flags] [path...]
+
+    Directory paths format .ridl files recursively (also accepts ./...).
 
     -h    show help
     -s    sort errors by code

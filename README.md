@@ -21,6 +21,23 @@ You can install RIDLFMT using `go install`:
 go install github.com/webrpc/ridlfmt@latest
 ```
 
+## Formatting files and directories
+
+Like `gofmt`, RIDLFMT prints formatted output by default. Use `-w` to update
+files in place. Directory arguments recursively select `.ridl` files, skipping
+files whose names start with a dot, like `gofmt`. Explicit
+file arguments are formatted regardless of their extension. `./...` and
+`directory/...` are also supported as recursive directory shortcuts.
+
+```bash
+ridlfmt schema.ridl      # Print a formatted file
+ridlfmt .               # Print all .ridl files recursively
+ridlfmt -w ./...        # Format all .ridl files recursively in place
+ridlfmt -w -s schemas   # Format a directory and sort errors by code
+```
+
+With no paths, RIDLFMT reads from stdin. Explicit paths take precedence over stdin.
+
 ## REST routes
 
 A method can declare zero or more REST routes with `+ VERB /path` lines.
