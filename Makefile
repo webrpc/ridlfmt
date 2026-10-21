@@ -1,11 +1,13 @@
+VERSION ?= $(shell git describe --tags --dirty 2>/dev/null || echo v0.0.0-dev)
+
 build:
-	go build -o ./bin/ridlfmt ./main.go
+	go build -ldflags="-s -w -X main.version=$(VERSION)" -o ./bin/ridlfmt .
 
 install:
-	go install .
+	go install -ldflags="-s -w -X main.version=$(VERSION)" .
 
 rerun-install:
-	go run github.com/goware/rerun/cmd/rerun -watch . -ignore out -run sh -c 'go install .'
+	go run github.com/goware/rerun/cmd/rerun -watch . -ignore out -run sh -c 'make install'
 
 rerun-1:
 	go run github.com/goware/rerun/cmd/rerun -watch . -ignore out -run sh -c 'go run . -s _examples/e1.ridl'

@@ -8,9 +8,12 @@ It uses similiar API as `gofmt`
 ridlfmt -h
 usage: ridlfmt [flags] [path...]
 
-    -h    show help
-    -s    sort errors by code
-    -w    write result to (source) file instead of stdout
+    Directory paths format .ridl files recursively (also accepts ./...).
+
+    -h              show help
+    -s              sort errors by code
+    -v, -version    show version
+    -w              write result to (source) file instead of stdout
 ```
 
 ## Installation
@@ -30,7 +33,7 @@ file arguments are formatted regardless of their extension. `./...` and
 `directory/...` are also supported as recursive directory shortcuts.
 
 ```bash
-ridlfmt schema.ridl      # Print a formatted file
+ridlfmt schema.ridl     # Print a formatted file
 ridlfmt .               # Print all .ridl files recursively
 ridlfmt -w ./...        # Format all .ridl files recursively in place
 ridlfmt -w -s schemas   # Format a directory and sort errors by code

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 
@@ -358,6 +359,49 @@ func TestSubprocess_HelpFlag(t *testing.T) {
 	_, stderr, code := runMainSubprocess(t, []string{"-h"}, "", false)
 	assert.Equal(t, 0, code)
 	assert.Contains(t, stderr, "usage: ridlfmt [flags] [path...]")
+	assert.Contains(t, stderr, "-v, -version")
+}
+
+func TestBuildVersion(t *testing.T) {
+	oldVersion := version
+	t.Cleanup(func() { version = oldVersion })
+	for _, tt := range []struct {
+		name     string
+		override string
+		info     *debug.BuildInfo
+		want     string
+	}{
+		{"release module", "devel", &debug.BuildInfo{Main: debug.Module{Version: "v0.3.0"}}, "v0.3.0"},
+		{"prerelease module", "devel", &debug.BuildInfo{Main: debug.Module{Version: "v0.4.0-rc.1"}}, "v0.4.0-rc.1"},
+		{"pseudo version", "devel", &debug.BuildInfo{Main: debug.Module{Version: "v0.3.1-0.20261021070000-abcdef123456"}}, "v0.3.1-0.20261021070000-abcdef123456"},
+		{"local build", "devel", &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}}, "devel"},
+		{"empty module version", "devel", &debug.BuildInfo{}, "devel"},
+		{"missing build info", "devel", nil, "devel"},
+		{"linker override", "v0.4.0", &debug.BuildInfo{Main: debug.Module{Version: "v0.3.0"}}, "v0.4.0"},
+		{"linker override without build info", "v0.4.0", nil, "v0.4.0"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			version = tt.override
+			assert.Equal(t, tt.want, buildVersion(tt.info))
+		})
+	}
+}
+
+func TestSubprocess_VersionFlags(t *testing.T) {
+	for _, flag := range []string{"-version", "-v"} {
+		for _, piped := range []bool{false, true} {
+			name := flag + "/terminal"
+			if piped {
+				name = flag + "/pipe"
+			}
+			t.Run(name, func(t *testing.T) {
+				stdout, stderr, code := runMainSubprocess(t, []string{flag, "missing.ridl"}, "invalid input", piped)
+				assert.Equal(t, 0, code)
+				assert.Equal(t, "ridlfmt devel\n", stdout)
+				assert.Empty(t, stderr)
+			})
+		}
+	}
 }
 
 func TestSubprocess_NoInputFiles(t *testing.T) {

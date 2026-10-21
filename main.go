@@ -9,10 +9,14 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 
 	"github.com/webrpc/ridlfmt/formatter"
 )
+
+// version can be set by release builds with -ldflags "-X main.version=vX.Y.Z".
+var version = "devel"
 
 func main() {
 	flagSet := flag.NewFlagSet("ridlfmt", flag.ExitOnError)
@@ -27,6 +31,9 @@ func runRidlfmt(flagSet *flag.FlagSet, args []string) error {
 	sortErrorsFlag := flagSet.Bool("s", false, "sort errors by code")
 	writeFlag := flagSet.Bool("w", false, "write output to input file (overwrites the file)")
 	helpFlag := flagSet.Bool("h", false, "show help")
+	var versionFlag bool
+	flagSet.BoolVar(&versionFlag, "version", false, "show version")
+	flagSet.BoolVar(&versionFlag, "v", false, "show version")
 
 	if err := flagSet.Parse(args); err != nil {
 		return fmt.Errorf("parse args: %w", err)
@@ -35,6 +42,12 @@ func runRidlfmt(flagSet *flag.FlagSet, args []string) error {
 	if *helpFlag {
 		flag.Usage()
 		os.Exit(0)
+	}
+
+	if versionFlag {
+		info, _ := debug.ReadBuildInfo()
+		fmt.Printf("ridlfmt %s\n", buildVersion(info))
+		return nil
 	}
 
 	fileArgs := flagSet.Args()
@@ -74,6 +87,16 @@ func runRidlfmt(flagSet *flag.FlagSet, args []string) error {
 	}
 
 	return nil
+}
+
+func buildVersion(info *debug.BuildInfo) string {
+	if version != "devel" {
+		return version
+	}
+	if info != nil && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return "devel"
 }
 
 // expandFileArgs expands directories and directory/... to regular .ridl files.
@@ -194,8 +217,9 @@ func usage() {
 
     Directory paths format .ridl files recursively (also accepts ./...).
 
-    -h    show help
-    -s    sort errors by code
-    -w    write result to (source) file instead of stdout 
+    -h              show help
+    -s              sort errors by code
+    -v, -version    show version
+    -w              write result to (source) file instead of stdout
 `)
 }
