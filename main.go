@@ -192,7 +192,7 @@ func formatAndPrintFromPipe(sortErrorsFlag bool) error {
 func usage() {
 	fmt.Fprintf(os.Stderr, `usage: ridlfmt [flags] [path...]
 
-    Directories and directory/... recursively select .ridl files.
+    Directory paths format .ridl files recursively (also accepts ./...).
 
     -h    show help
     -s    sort errors by code
