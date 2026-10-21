@@ -1,6 +1,7 @@
       webrpc    =    v1    #    version of webrpc schema format (ridl or json)
    name    = 		example # name of your backend app
 	version=v0.0.1 #version of your schema
+  basepath   =    /v1 # shared REST route prefix
 
 # bar
 enum Intent: string
@@ -38,6 +39,13 @@ struct     User
     + json = intent ###! dsadasdasds
     + go.tag.db = -
 
+struct CreateUserRequest
+  - username: string
+
+struct UpdateUserRequest
+  - id: uint64
+  - username: string
+
 struct Version
   - webrpcVersion: string
   - schemaVersion: string
@@ -66,15 +74,29 @@ error 1  IAmFirst "I am first" HTTP 101 # comment
 error 20         UserNotFound     "User not found" HTTP 404
 error 4         UserTooYoung     ""  HTTP   404 
 
-service ExampleService # oof
+# HTTP status is optional and is left omitted by the formatter.
+error 5 InvalidName "Name is required"
+
+service ExampleService # deprecated above-method annotations are moved below their methods
   @   deprecated   :      Pong
   	@  auth   :   ApiKeyAuth @   who    dsa   :   J    W    T   ## dadsadadsa
 - Ping()
+      + GET    /ping
+       + @success   200
  - Status() => (status: bool)
+      + @public
+       + @cache   =   enabled
+       + @description = "Service status # including dependencies" # quoted hashes stay in the value
+      + GET    /status
+      + @success   200
   	@                        internal                         @      public          @ stringo :  " string with spaces"      ##      dsada s dsa
   - Version() => (version: Version)
 @public
    - GetUser   (   header   :    map  <   string   ,   string   >   ,   userID   :    uint64   )   =>   (  code  :   uint32   ,   user  :   User  )
+      + GET    /users/{userID}
+      + @success 200
+      + POST   /ExampleService/GetUser # compatibility route
+      + @success 200
     - FindUser(s :SearchFilter) => (name: string, user: User) ###! last
 
     -    stream    Re cv   (req  :   string   )
@@ -85,3 +107,29 @@ service ExampleService # oof
   -streamSe ndAndRecv(req: string) => stream (resp: string)
 
 - Updat  eU ser (  User  )   =>   (  User )
+
+  # Current REST routes and annotations, with spacing for ridlfmt to normalize.
+  - CreateUser( CreateUserRequest ) => ( User )
+       + @auth    =    ApiKeyAuth
+      + POST    /users
+       + @success  200 | 201 # normalized to a single status-code token
+
+  - ReplaceUser( UpdateUserRequest ) => ( User )
+      + @auth = ApiKeyAuth
+      + PUT   /users/{id}
+      + @success 200
+
+  - UpdateUser( UpdateUserRequest ) => ( User )
+      + @auth = ApiKeyAuth
+      + PATCH   /users/{id}
+      + @success 200
+
+  - DeleteUser( userID : uint64 )
+      + @auth = ApiKeyAuth
+      + DELETE   /users/{userID}
+      + @success 204
+
+  - FindUsers( name : string ) => ( users : []User )
+      + @internal
+      + QUERY   /users
+      + @success 200
