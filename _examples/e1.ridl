@@ -82,20 +82,21 @@ service ExampleService # deprecated above-method annotations are moved below the
   	@  auth   :   ApiKeyAuth @   who    dsa   :   J    W    T   ## dadsadadsa
 - Ping()
       + GET    /ping
-       + @success   200
+       + success   200
  - Status() => (status: bool)
       + @public
        + @cache   =   enabled
        + @description = "Service status # including dependencies" # quoted hashes stay in the value
       + GET    /status
-      + @success   200
+      + success   200
   	@                        internal                         @      public          @ stringo :  " string with spaces"      ##      dsada s dsa
   - Version() => (version: Version)
 @public
    - GetUser   (   header   :    map  <   string   ,   string   >   ,   userID   :    uint64   )   =>   (  code  :   uint32   ,   user  :   User  )
       + GET    /users/{userID}
       + POST   /ExampleService/GetUser # compatibility route
-      + @success 200 # applies to both routes
+      + success 200 # applies to both routes
+       + error UserNotFound | InvalidName
     - FindUser(s :SearchFilter) => (name: string, user: User) ###! last
 
     -    stream    Re cv   (req  :   string   )
@@ -111,24 +112,24 @@ service ExampleService # deprecated above-method annotations are moved below the
   - CreateUser( CreateUserRequest ) => ( User )
        + @auth    =    ApiKeyAuth
       + POST    /users
-       + @success  200 | 201 # normalized to a single status-code token
+       + success  200 | 201 # normalized to a single status-code token
 
   - ReplaceUser( UpdateUserRequest ) => ( User )
       + @auth = ApiKeyAuth
       + PUT   /users/{id}
-      + @success 200
+      + success 200
 
   - UpdateUser( UpdateUserRequest ) => ( User )
       + @auth = ApiKeyAuth
       + PATCH   /users/{id}
-      + @success 200
+      + success 200
 
   - DeleteUser( userID : uint64 )
       + @auth = ApiKeyAuth
       + DELETE   /users/{userID}
-      + @success 204
+      + success 204
 
   - FindUsers( name : string ) => ( users : []User )
       + @internal
       + QUERY   /users
-      + @success 200
+      + success 200

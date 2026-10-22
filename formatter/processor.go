@@ -19,7 +19,7 @@ type form struct {
 	topLvlSection section
 	pending       []pendingAnnotation
 	// keepAnnotation marks a deprecated above-method annotation that stays in
-	// the old form; webrpc reads '+ @success' below a method as a route code.
+	// the old form; it was arbitrary metadata, not a route success option.
 	keepAnnotation bool
 	// trailer holds comment and blank lines seen after a stashed annotation;
 	// they are written out where the annotation block lands.
@@ -183,6 +183,14 @@ func (f *form) formatLine(line string) (string, error) {
 
 	case sectionComment:
 		f.comments = append(f.comments, parseComment(line))
+	case sectionTypeAlias:
+		s, c := parseAndDivideInlineComment(line)
+		name, typ, ok := strings.Cut(strings.TrimPrefix(s, "type"), ":")
+		if !ok || strings.TrimSpace(name) == "" || strings.TrimSpace(typ) == "" {
+			return "", fmt.Errorf("wrong type alias format: %s", line)
+		}
+		f.padding = 0
+		line = c.appendInlineComment("type " + strings.TrimSpace(name) + ": " + removeSpaces(typ))
 	case sectionEnum:
 		f.padding = 0
 		line = reduceSpaces(line)
@@ -203,7 +211,8 @@ func (f *form) formatLine(line string) (string, error) {
 		line = reduceSpaces(line)
 	case sectionError:
 		f.padding = 0
-		partsLine := strings.Split(line, `"`)
+		s, c := parseAndDivideInlineComment(line)
+		partsLine := strings.Split(s, `"`)
 
 		if len(partsLine) != 3 {
 			return "", fmt.Errorf("wrong error format line=(%s)", line)
@@ -244,7 +253,7 @@ func (f *form) formatLine(line string) (string, error) {
 			name:          partsBegin[2],
 			description:   partsLine[1],
 			httpCode:      httpCode,
-			inlineComment: parseComment(errorEnding),
+			inlineComment: c,
 		}
 
 		f.errors = append(f.errors, e)
@@ -266,6 +275,10 @@ func (f *form) formatLine(line string) (string, error) {
 			line = c.appendInlineComment(line)
 		case sectionService:
 			s, c := parseAndDivideInlineComment(line)
+			s, methodErrors, err := splitMethodErrors(s)
+			if err != nil {
+				return "", err
+			}
 			parts := strings.Split(s, "=>")
 			p1 := strings.TrimSpace(parts[0])
 
@@ -305,6 +318,9 @@ func (f *form) formatLine(line string) (string, error) {
 			if len(f.pending) > 0 {
 				line += "\n" + strings.Join(f.takePendingNew(), "\n")
 			}
+			if methodErrors != "" {
+				line += "\n" + formatMethodOption("error", methodErrors, 4)
+			}
 		case sectionImport:
 			s, c := parseAndDivideInlineComment(line)
 			parts := strings.Split(s, ":")
@@ -337,6 +353,11 @@ func (f *form) formatLine(line string) (string, error) {
 		parts := strings.Fields(strings.TrimPrefix(s, "+"))
 		line = fmt.Sprintf("%s+ %s %s", strings.Repeat(" ", f.padding), parts[0], parts[1])
 		line = c.appendInlineComment(line)
+	case sectionMethodOption:
+		f.padding = 4
+		s, c := parseAndDivideInlineComment(line)
+		name, value, _ := parseMethodOption(s)
+		line = c.appendInlineComment(formatMethodOption(name, value, f.padding))
 	case sectionMethodAnnotation:
 		f.padding = 4
 		line = formatMethodAnnotation(line, f.padding)
@@ -346,8 +367,8 @@ func (f *form) formatLine(line string) (string, error) {
 
 		tokens := parseAnnotationTokens(s)
 
-		// webrpc reads '+ @success' below a method as a route success code, so
-		// the deprecated form stays above it; only a rename can fix it.
+		// Above-method @success was arbitrary metadata. Keep it rather than
+		// changing its meaning to a route success option.
 		f.keepAnnotation = f.topLvlSection == sectionService && hasSuccessAnnotation(tokens)
 		if f.topLvlSection == sectionService && !f.keepAnnotation {
 			f.pending = append(f.pending, newPendingAnnotation(tokens, c, f.padding))
@@ -389,6 +410,9 @@ func (f *form) parseSection(line string) {
 	case strings.HasPrefix(line, "enum"):
 		f.section = sectionEnum
 		f.topLvlSection = sectionEnum
+	case strings.HasPrefix(line, "type ") || strings.HasPrefix(line, "type\t"):
+		f.section = sectionTypeAlias
+		f.topLvlSection = sectionTypeAlias
 	case strings.HasPrefix(line, "struct"):
 		f.section = sectionStruct
 		f.topLvlSection = sectionStruct
@@ -402,6 +426,8 @@ func (f *form) parseSection(line string) {
 		f.section = sectionField
 	case strings.HasPrefix(line, "+") && f.topLvlSection == sectionService && isRouteLine(line):
 		f.section = sectionRoute
+	case strings.HasPrefix(line, "+") && f.topLvlSection == sectionService && isMethodOptionLine(line):
+		f.section = sectionMethodOption
 	case strings.HasPrefix(line, "+") && f.topLvlSection == sectionService && isMethodAnnotationLine(line):
 		f.section = sectionMethodAnnotation
 	case strings.HasPrefix(line, "+"):
@@ -718,7 +744,7 @@ func splitMethodAnnotations(body string) []string {
 		}
 
 		if !strings.HasPrefix(rest, "@") {
-			// `+ @success 200` keeps the space-separated value webrpc requires.
+			// Legacy `+ @success 200` accepts a space-separated value.
 			tokens = append(tokens, "@"+name+" "+rest)
 
 			break
@@ -733,12 +759,15 @@ func splitMethodAnnotations(body string) []string {
 
 // formatAnnotationToken formats one annotation token as `@name` or
 // `@name = value`. A colon- or space-separated value is normalized to '=',
-// except for `@success`, which webrpc reserves for route status codes.
+// except for legacy `@success`, which becomes a `success` option.
 func formatAnnotationToken(token string) string {
 	body := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(token), "@"))
 
 	i := strings.IndexAny(body, ": \t=")
 	if i < 0 {
+		if body == "success" {
+			return "success"
+		}
 		return "@" + removeSpaces(body)
 	}
 
@@ -748,18 +777,9 @@ func formatAnnotationToken(token string) string {
 		rest = rest[1:]
 	}
 
-	// webrpc reserves `+ @success NNN` for route status codes, so the '=' form
-	// of that annotation is rejected. The parser wants a single `200|201`
-	// token, so no spaces may survive.
+	// The former route option `+ @success` is now `+ success`.
 	if name == "success" {
-		codes := removeSpaces(rest)
-		if codes == "" {
-			// Do not collapse an empty code to the bare annotation name; keep
-			// the separator and let the parser report the missing code.
-			return "@success ="
-		}
-
-		return "@success " + codes
+		return strings.TrimSpace("success " + removeSpaces(rest))
 	}
 
 	// `+ @a =` is a parse error, so an empty value collapses to a bare name.
@@ -802,4 +822,55 @@ func isRouteLine(line string) bool {
 // isMethodAnnotationLine matches a method's `+ @name[ = value]` meta-line.
 func isMethodAnnotationLine(line string) bool {
 	return strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(line, "+")), "@")
+}
+
+// parseMethodOption recognizes reserved method option names, not annotations
+// such as @error or longer names such as successful.
+func parseMethodOption(line string) (name, value string, ok bool) {
+	body := strings.TrimSpace(strings.TrimPrefix(line, "+"))
+	parts := strings.SplitN(reduceSpacesInString(body), " ", 2)
+	name = parts[0]
+	if name != "success" && name != "error" {
+		return "", "", false
+	}
+	if len(parts) == 2 {
+		value = parts[1]
+	}
+	return name, value, true
+}
+
+func isMethodOptionLine(line string) bool {
+	_, _, ok := parseMethodOption(line)
+	return ok
+}
+
+// Both lists use a compact bar separator. Keep names, duplicates and order so
+// schema validation can report invalid declarations without losing information.
+func formatMethodOption(name, value string, padding int) string {
+	values := strings.Split(value, "|")
+	for i := range values {
+		values[i] = reduceSpacesInString(values[i])
+	}
+	return strings.Repeat(" ", padding) + strings.TrimSpace("+ "+name+" "+strings.Join(values, "|"))
+}
+
+// splitMethodErrors migrates the removed signature suffix to a + error line.
+// Previously formatting silently discarded everything after the final ')'.
+func splitMethodErrors(signature string) (string, string, error) {
+	end := strings.LastIndex(signature, ")")
+	if end < 0 {
+		return signature, "", nil // Argument formatting reports missing parentheses.
+	}
+	suffix := strings.TrimSpace(signature[end+1:])
+	if suffix == "" {
+		return signature, "", nil
+	}
+	parts := strings.SplitN(reduceSpacesInString(suffix), " ", 2)
+	if parts[0] != "errors" {
+		return "", "", fmt.Errorf("unexpected method suffix: %s", suffix)
+	}
+	if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
+		return "", "", fmt.Errorf("missing error names after method errors clause")
+	}
+	return signature[:end+1], parts[1], nil
 }

@@ -200,7 +200,7 @@ service Users
     + @stringo = " a b " ## note
     + @auth = admin
     + GET /users/{id}
-    + @success 200 # ok
+    + success 200 # ok
   - Ping()
     + @deprecated = "Use PingV2 instead."
 `
@@ -241,13 +241,13 @@ service Users
     + @path = C:\temp
     + @glob = C:\my "dir" here
     + @see = "https://a.com/#frag"
-    + @success 200|201 # ok
+    + success 200|201 # ok
   - Create(GetUserRequest) => (GetUserResponse)
     + @cache = 60
-    + @success 201
+    + success 201
   - Ping()
   - Status() => (status: bool)
-    + @success 204
+    + success 204
 `
 
 	output, err := Format(strings.NewReader(input), false)
@@ -302,8 +302,8 @@ func TestFormat_OldSuccessAnnotationAfterStashedAnnotation(t *testing.T) {
 }
 
 func TestFormat_OldSuccessAnnotationStaysAboveMethod(t *testing.T) {
-	// webrpc reads '+ @success' below a method as a route success code, so the
-	// deprecated above-method form cannot be migrated; it needs a rename.
+	// Above-method @success is arbitrary metadata, so migrating it to a route
+	// option would change its meaning.
 	input := `webrpc = v1
 
 service Users
@@ -408,4 +408,152 @@ error 200 UserNotFound "user not found" # defaults to HTTP 400
 	output, err := Format(strings.NewReader(input), false)
 	require.NoError(t, err)
 	assert.Equal(t, expected, output)
+}
+
+func TestFormat_MethodOptions(t *testing.T) {
+	input := `webrpc = v1
+
+service Users
+  - Get(id: uint64) => (user: User)
+      +   success   201 | 200 # first status is the default
+      +error NotFound | Unauthorized
+      + @auth=ApiKeyAuth
+      + GET /users/{id}
+      + error RateLimited
+      + POST /Users/Get
+  - Delete(id: uint64)
+    + DELETE /users/{id}
+    + success 204
+`
+	expected := `webrpc = v1
+
+service Users
+  - Get(id: uint64) => (user: User)
+    + success 201|200 # first status is the default
+    + error NotFound|Unauthorized
+    + @auth = ApiKeyAuth
+    + GET /users/{id}
+    + error RateLimited
+    + POST /Users/Get
+  - Delete(id: uint64)
+    + DELETE /users/{id}
+    + success 204
+`
+
+	for _, sortErrors := range []bool{false, true} {
+		output, err := Format(strings.NewReader(input), sortErrors)
+		require.NoError(t, err)
+		assert.Equal(t, expected, output)
+		again, err := Format(strings.NewReader(output), sortErrors)
+		require.NoError(t, err)
+		assert.Equal(t, output, again)
+	}
+}
+
+func TestFormat_LegacyMethodErrors(t *testing.T) {
+	for _, signature := range []string{
+		"Get(id:uint64) => (user:User)",
+		"Get(id:uint64)",
+		"stream Get(id:uint64) => stream (user:User)",
+	} {
+		t.Run(signature, func(t *testing.T) {
+			input := "service Users\n  @internal\n  - " + signature + " errors NotFound | Unauthorized # scoped errors\n    + error RateLimited\n    + GET /users/{id}\n    + @success 200 | 201\n"
+			output, err := Format(strings.NewReader(input), false)
+			require.NoError(t, err)
+			assert.NotContains(t, output, " errors ")
+			assert.Contains(t, output, " # scoped errors\n    + @internal\n    + error NotFound|Unauthorized\n    + error RateLimited\n    + GET /users/{id}\n    + success 200|201\n")
+			again, err := Format(strings.NewReader(output), false)
+			require.NoError(t, err)
+			assert.Equal(t, output, again)
+		})
+	}
+}
+
+func TestFormat_InvalidMethodSuffix(t *testing.T) {
+	for _, suffix := range []string{"errors", "unexpected NotFound"} {
+		_, err := Format(strings.NewReader("service Users\n  - Get() "+suffix+"\n"), false)
+		require.Error(t, err)
+	}
+}
+
+func TestFormat_MethodOptionBoundaries(t *testing.T) {
+	input := `struct Options
+  - value: string
+    + success = yes
+    + error = message
+
+service Users
+  - Get()
+    + @error = custom
+    + @successful = yes
+    + successful = yes
+    + errors = custom
+    + error A|A
+    + error A
+    + success 201|201
+    + error
+    + success
+    + error A B
+`
+	output, err := Format(strings.NewReader(input), false)
+	require.NoError(t, err)
+	assert.Equal(t, input, output)
+}
+
+func TestFormat_TypeAliasesEnumMetadataAndFiles(t *testing.T) {
+	input := `webrpc = v1
+
+type    Address :   string # identifier
+     + go.type = Address
+type Labels: [] Address
+type Wallet: Address
+type Lookup: map< string, Address >
+
+enum Kind: uint32
+  - User
+      + json=USER
+
+struct Upload
+  - address: Wallet
+  - labels: Labels
+  - attachment: file
+  - attachments: []file
+
+service Files
+  - Upload(Upload) => (data: file)
+`
+	expected := `webrpc = v1
+
+type Address: string # identifier
+    + go.type = Address
+type Labels: []Address
+type Wallet: Address
+type Lookup: map<string,Address>
+
+enum Kind: uint32
+  - User
+    + json = USER
+
+struct Upload
+  - address: Wallet
+  - labels: Labels
+  - attachment: file
+  - attachments: []file
+
+service Files
+  - Upload(Upload) => (data: file)
+`
+	output, err := Format(strings.NewReader(input), false)
+	require.NoError(t, err)
+	assert.Equal(t, expected, output)
+	again, err := Format(strings.NewReader(output), false)
+	require.NoError(t, err)
+	assert.Equal(t, output, again)
+}
+
+func TestFormat_ErrorWithQuotedComment(t *testing.T) {
+	input := "error 1 Missing \"not found\" HTTP 404 # reserved for \"route not found\"\n"
+	output, err := Format(strings.NewReader(input), false)
+	require.NoError(t, err)
+	assert.Equal(t, input, output)
 }

@@ -57,6 +57,30 @@ service Intents
 
 RIDLFMT normalizes the route to `    + POST /intents/{intentId}` and keeps the routes in their written order.
 
+## Method options
+
+Methods can declare success status codes and errors alongside routes and annotations:
+
+```ridl
+service Users
+  - GetUser(id: uint64) => (user: User)
+    + @auth = ApiKeyAuth
+    + GET /users/{id}
+    + success 200|201
+    + error UserNotFound|Unauthorized
+```
+
+RIDLFMT normalizes spacing around `+ success` and `+ error` lists, preserving
+their order and repeated error lines. It migrates legacy `+ @success` lines to
+`+ success`, and `errors A|B` clauses after method signatures to `+ error A|B`
+lines below the method. These changes follow [webrpc's method option syntax](https://github.com/webrpc/webrpc/pull/542).
+
+Above-method `@success` remains unchanged: it was arbitrary annotation metadata,
+so converting it to an HTTP status option could change its meaning.
+
+Type aliases (`type Address: string`), their metadata, enum value metadata,
+and `file` types are also supported.
+
 ## Setting in IDE
 
 ### VSCode
