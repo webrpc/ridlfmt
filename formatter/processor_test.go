@@ -528,25 +528,27 @@ func TestFormatLine_AnnotationMigration(t *testing.T) {
 		assert.Equal(t, "  - Get()\n    + @internal\n    + @public\n    + @stringo = \" a b \" ## note", line)
 	})
 
-	t.Run("success annotation stays above the method", func(t *testing.T) {
-		// Above-method @success is metadata, not a route option.
+	t.Run("success moves below the method as an option", func(t *testing.T) {
 		f := &form{topLvlSection: sectionService}
 		line, err := f.formatLine("@success:201")
 		require.NoError(t, err)
-		assert.Equal(t, "    @success:201", line)
-		assert.Empty(t, f.pending)
+		assert.Empty(t, line)
+		require.Len(t, f.pending, 1)
 
 		line, err = f.formatLine("- Create()")
 		require.NoError(t, err)
-		assert.Equal(t, "  - Create()", line)
+		assert.Equal(t, "  - Create()\n    + success 201", line)
 	})
 
-	t.Run("success next to another annotation keeps the whole line above", func(t *testing.T) {
+	t.Run("success and other annotations all move below", func(t *testing.T) {
 		f := &form{topLvlSection: sectionService}
 		line, err := f.formatLine("@internal @success:201")
 		require.NoError(t, err)
-		assert.Equal(t, "    @internal @success:201", line)
-		assert.Empty(t, f.pending)
+		assert.Empty(t, line)
+
+		line, err = f.formatLine("- Create()")
+		require.NoError(t, err)
+		assert.Equal(t, "  - Create()\n    + @internal\n    + success 201", line)
 	})
 
 	t.Run("colon inside a quoted value stays in the value", func(t *testing.T) {
