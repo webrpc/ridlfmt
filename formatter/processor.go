@@ -11,16 +11,14 @@ import (
 )
 
 type form struct {
-	padding       int
-	comments      []*comment
-	errors        ridlErrors
-	sortErrors    bool
-	section       section
-	topLvlSection section
-	pending       []pendingAnnotation
-	// keepAnnotation marks a deprecated above-method annotation that stays in
-	// the old form; it was arbitrary metadata, not a route success option.
-	keepAnnotation bool
+	padding            int
+	comments           []*comment
+	errors             ridlErrors
+	sortErrors         bool
+	section            section
+	topLvlSection      section
+	pending            []pendingAnnotation
+	annotationComments []*comment
 	// trailer holds comment and blank lines seen after a stashed annotation;
 	// they are written out where the annotation block lands.
 	trailer []string
@@ -110,21 +108,14 @@ func (f *form) processLines(inputFile io.Reader) (string, error) {
 
 		// Annotations below a method line are written as-is; above-method ones
 		// under a service are stashed until we see the method they belong to.
-		stashed := f.section == sectionAnnotation && f.topLvlSection == sectionService && !f.keepAnnotation
-		if stashed {
-			// Comments above the annotation stay above it in the old form.
-			output.WriteString(f.commentsPrint())
-		} else if f.section != sectionComment && f.section != sectionError {
+		stashed := f.section == sectionAnnotation && f.topLvlSection == sectionService
+		if !stashed && f.section != sectionComment && f.section != sectionError {
 			output.WriteString(f.commentsPrint())
 			if migrated {
 				output.WriteString(line + "\n")
 				output.WriteString(f.trailerPrint())
 			} else {
-				// A kept `@success` line stays above the method; the annotations
-				// stashed before it still migrate below it.
-				if !f.keepAnnotation {
-					output.WriteString(f.pendingPrint())
-				}
+				output.WriteString(f.pendingPrint())
 
 				output.WriteString(line + "\n")
 			}
@@ -151,8 +142,8 @@ func (f *form) processLines(inputFile io.Reader) (string, error) {
 }
 
 func (f *form) formatLine(line string) (string, error) {
+	var prefix string
 	line = strings.TrimSpace(line)
-	f.keepAnnotation = false
 
 	if line == "" {
 		f.section = sectionEmpty
@@ -316,6 +307,7 @@ func (f *form) formatLine(line string) (string, error) {
 			line = c.appendInlineComment(line)
 
 			if len(f.pending) > 0 {
+				prefix = f.annotationCommentsPrint(2)
 				line += "\n" + strings.Join(f.takePendingNew(), "\n")
 			}
 			if methodErrors != "" {
@@ -351,7 +343,7 @@ func (f *form) formatLine(line string) (string, error) {
 		f.padding = 4
 		s, c := parseAndDivideInlineComment(line)
 		parts := strings.Fields(strings.TrimPrefix(s, "+"))
-		line = fmt.Sprintf("%s+ %s %s", strings.Repeat(" ", f.padding), parts[0], parts[1])
+		line = fmt.Sprintf("%s+ %-6s %s", strings.Repeat(" ", f.padding), parts[0], parts[1])
 		line = c.appendInlineComment(line)
 	case sectionMethodOption:
 		f.padding = 4
@@ -367,10 +359,11 @@ func (f *form) formatLine(line string) (string, error) {
 
 		tokens := parseAnnotationTokens(s)
 
-		// Above-method @success was arbitrary metadata. Keep it rather than
-		// changing its meaning to a route success option.
-		f.keepAnnotation = f.topLvlSection == sectionService && hasSuccessAnnotation(tokens)
-		if f.topLvlSection == sectionService && !f.keepAnnotation {
+		if f.topLvlSection == sectionService {
+			if len(f.pending) == 0 {
+				f.annotationComments = append(f.annotationComments, f.comments...)
+				f.comments = nil
+			}
 			f.pending = append(f.pending, newPendingAnnotation(tokens, c, f.padding))
 			return "", nil
 		}
@@ -385,7 +378,7 @@ func (f *form) formatLine(line string) (string, error) {
 		line = c.appendInlineComment(s)
 	}
 
-	return line, nil
+	return prefix + line, nil
 }
 
 func (f *form) parseSection(line string) {
@@ -616,12 +609,24 @@ func (f *form) pendingPrint() string {
 	}
 
 	var b strings.Builder
+	b.WriteString(f.annotationCommentsPrint(4))
 	for _, p := range f.pending {
 		b.WriteString(p.old + "\n")
 	}
 	f.pending = nil
 
 	return b.String() + f.trailerPrint()
+}
+
+// Comments preceding an annotation block stay above the destination method.
+// If the block has no following method, they retain the old indentation.
+func (f *form) annotationCommentsPrint(padding int) string {
+	var b strings.Builder
+	for _, c := range f.annotationComments {
+		b.WriteString(strings.Repeat(" ", padding) + c.getString() + "\n")
+	}
+	f.annotationComments = nil
+	return b.String()
 }
 
 func (f *form) takePendingNew() []string {
@@ -661,30 +666,17 @@ func (f *form) trailerPrint() string {
 	return s
 }
 
-// hasSuccessAnnotation reports whether a group of deprecated above-method
-// annotations contains `@success`.
-func hasSuccessAnnotation(tokens []string) bool {
-	for _, token := range tokens {
-		name, _, _ := strings.Cut(strings.TrimPrefix(token, "@"), ":")
-		if removeSpaces(name) == "success" {
-			return true
-		}
-	}
-
-	return false
-}
-
 // parseAnnotationTokens splits the deprecated above-method form into one
 // normalized `@name[:value]` token per annotation. The value stays raw so the
 // formatter can quote it later; space-stripping here would corrupt multi-word
 // values before the quoter sees them. The name/value split is on the first
 // colon only, since values may contain colons.
 func parseAnnotationTokens(s string) []string {
-	parts := strings.Split(s, "@")
+	parts := splitAboveMethodAnnotations(s)
 
-	tokens := make([]string, 0, len(parts)-1)
-	for i := 1; i < len(parts); i++ {
-		name, value, hasValue := strings.Cut(parts[i], ":")
+	tokens := make([]string, 0, len(parts))
+	for _, part := range parts {
+		name, value, hasValue := strings.Cut(strings.TrimPrefix(part, "@"), ":")
 		name = removeSpaces(name)
 
 		if !hasValue {
@@ -697,6 +689,47 @@ func parseAnnotationTokens(s string) []string {
 	}
 
 	return tokens
+}
+
+// splitAboveMethodAnnotations respects quoted strings and word tokens, where
+// '@' is part of the value (for example an email address), just like the RIDL
+// lexer. Only an '@' at a token boundary starts another annotation.
+func splitAboveMethodAnnotations(s string) []string {
+	var parts []string
+	start := -1
+	inQuote, escaped, inWord := false, false, false
+	for i, r := range s {
+		if inQuote {
+			if escaped {
+				escaped = false
+			} else if r == '\\' {
+				escaped = true
+			} else if r == '"' {
+				inQuote = false
+			}
+			continue
+		}
+		if isWordBreak(r) {
+			inWord = false
+			inQuote = r == '"'
+			continue
+		}
+		if inWord {
+			continue
+		}
+		if r == '@' {
+			if start >= 0 {
+				parts = append(parts, strings.TrimSpace(s[start:i]))
+			}
+			start = i
+		} else if isWordBeginning(r) {
+			inWord = true
+		}
+	}
+	if start >= 0 {
+		parts = append(parts, strings.TrimSpace(s[start:]))
+	}
+	return parts
 }
 
 // formatMethodAnnotation normalizes a `+ @name[ = value]` meta-line. webrpc
@@ -779,6 +812,10 @@ func formatAnnotationToken(token string) string {
 
 	// The former route option `+ @success` is now `+ success`.
 	if name == "success" {
+		rest = strings.TrimSpace(rest)
+		if value, err := strconv.Unquote(rest); err == nil {
+			rest = value
+		}
 		return strings.TrimSpace("success " + removeSpaces(rest))
 	}
 
@@ -811,7 +848,7 @@ func formatAnnotationValue(value string) string {
 	return value
 }
 
-var routeVerbs = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "QUERY"}
+var routeVerbs = []string{"GET", "QUERY", "POST", "PUT", "PATCH", "DELETE"}
 
 // isRouteLine matches a method's REST route tag, e.g. "+ GET /{userId}".
 func isRouteLine(line string) bool {
@@ -851,7 +888,7 @@ func formatMethodOption(name, value string, padding int) string {
 	for i := range values {
 		values[i] = reduceSpacesInString(values[i])
 	}
-	return strings.Repeat(" ", padding) + strings.TrimSpace("+ "+name+" "+strings.Join(values, "|"))
+	return strings.Repeat(" ", padding) + strings.TrimRight(fmt.Sprintf("+ %-7s %s", name, strings.Join(values, "|")), " ")
 }
 
 // splitMethodErrors migrates the removed signature suffix to a + error line.

@@ -133,3 +133,16 @@ service ExampleService # deprecated above-method annotations are moved below the
       + @internal
       + QUERY   /users
       + success 200
+
+  # Every supported HTTP verb, deliberately out of order for ridlfmt to sort.
+  - AllHTTPMethods(userID: uint64) => (user: User)
+    + DELETE /route-order/users/{userID}
+    + POST /route-order/users/{userID}
+    + PATCH /route-order/users/{userID}
+    + QUERY /route-order/users/{userID}
+    + PUT /route-order/users/{userID}
+    + GET /route-order/users/{userID}
+    + success 200
+    + error   UserNotFound|InvalidName
+    + @auth = ApiKeyAuth
+    + @internal

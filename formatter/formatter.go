@@ -15,6 +15,7 @@ func Format(inputFile io.Reader, sortErrors bool) (string, error) {
 		return "", fmt.Errorf("process lines: %w", err)
 	}
 
+	output = orderMethodBlocks(output)
 	output = f.removeDoubleLines(output)
 
 	return output, nil
