@@ -848,7 +848,7 @@ func formatAnnotationValue(value string) string {
 	return value
 }
 
-var routeVerbs = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "QUERY"}
+var routeVerbs = []string{"GET", "QUERY", "POST", "PUT", "PATCH", "DELETE"}
 
 // isRouteLine matches a method's REST route tag, e.g. "+ GET /{userId}".
 func isRouteLine(line string) bool {
@@ -888,7 +888,7 @@ func formatMethodOption(name, value string, padding int) string {
 	for i := range values {
 		values[i] = reduceSpacesInString(values[i])
 	}
-	return strings.Repeat(" ", padding) + strings.TrimSpace("+ "+name+" "+strings.Join(values, "|"))
+	return strings.Repeat(" ", padding) + strings.TrimRight(fmt.Sprintf("+ %-7s %s", name, strings.Join(values, "|")), " ")
 }
 
 // splitMethodErrors migrates the removed signature suffix to a + error line.

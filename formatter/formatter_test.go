@@ -461,8 +461,8 @@ service Users
     + GET /users/{id}
     + POST /Users/Get
     + success 201|200 # first status is the default
-    + error NotFound|Unauthorized
-    + error RateLimited
+    + error   NotFound|Unauthorized
+    + error   RateLimited
     + @auth = ApiKeyAuth
   - Delete(id: uint64)
     + DELETE /users/{id}
@@ -503,7 +503,7 @@ struct User
     + GET /users/{userID}
     + POST /ExampleService/GetUser # compatibility route
     + success 200 # applies to both routes
-    + error UserNotFound|InvalidName
+    + error   UserNotFound|InvalidName
     + @auth = ApiKeyAuth
     + @internal
     # Description annotation
@@ -526,10 +526,10 @@ struct User
 }
 
 func TestFormat_AnnotationsAfterEveryRouteVerb(t *testing.T) {
-	for _, verb := range []string{"GET", "POST", "PUT", "PATCH", "DELETE", "QUERY"} {
+	for _, verb := range []string{"GET", "QUERY", "POST", "PUT", "PATCH", "DELETE"} {
 		t.Run(verb, func(t *testing.T) {
 			input := "service Users\n  - Get()\n    # Authentication\n    + @auth = ApiKeyAuth\n    # Route\n    + " + verb + " /users\n    + error NotFound\n    + @internal\n    + success 200\n"
-			expected := "service Users\n  - Get()\n    # Route\n    + " + verb + " /users\n    + success 200\n    + error NotFound\n    # Authentication\n    + @auth = ApiKeyAuth\n    + @internal\n"
+			expected := "service Users\n  - Get()\n    # Route\n    + " + verb + " /users\n    + success 200\n    + error   NotFound\n    # Authentication\n    + @auth = ApiKeyAuth\n    + @internal\n"
 			output, err := Format(strings.NewReader(input), false)
 			require.NoError(t, err)
 			assert.Equal(t, expected, output)
@@ -569,15 +569,15 @@ func TestFormat_RoutesSortedByHTTPVerb(t *testing.T) {
     + GET /users/{userID}
     # Another GET
     + GET /users # second GET stays second
+    + QUERY /users/search
     # Compatibility route
     + POST /ExampleService/GetUser # compatibility route
     + POST /users/{userID} # second POST stays second
     + PUT /users/{userID}
     + PATCH /users/{userID}
     + DELETE /users/{userID}
-    + QUERY /users/search
     + success 200
-    + error UserNotFound|InvalidName
+    + error   UserNotFound|InvalidName
     + @auth = ApiKeyAuth
     + @internal
 
@@ -597,6 +597,19 @@ func TestFormat_RoutesSortedByHTTPVerb(t *testing.T) {
 	}
 }
 
+func TestFormat_MethodOptionAlignment(t *testing.T) {
+	for _, success := range []string{"", "    + success 200 # status\n"} {
+		input := "service Users\n  - Get()\n" + success + "    + error NotFound | InvalidName # errors\n    + error Unauthorized\n"
+		expected := "service Users\n  - Get()\n" + success + "    + error   NotFound|InvalidName # errors\n    + error   Unauthorized\n"
+		output, err := Format(strings.NewReader(input), false)
+		require.NoError(t, err)
+		assert.Equal(t, expected, output)
+		again, err := Format(strings.NewReader(output), false)
+		require.NoError(t, err)
+		assert.Equal(t, output, again)
+	}
+}
+
 func TestFormat_LegacyMethodErrors(t *testing.T) {
 	for _, signature := range []string{
 		"Get(id:uint64) => (user:User)",
@@ -608,7 +621,7 @@ func TestFormat_LegacyMethodErrors(t *testing.T) {
 			output, err := Format(strings.NewReader(input), false)
 			require.NoError(t, err)
 			assert.NotContains(t, output, " errors ")
-			assert.Contains(t, output, " # scoped errors\n    + GET /users/{id}\n    + success 200|201\n    + error NotFound|Unauthorized\n    + error RateLimited\n    + @internal\n")
+			assert.Contains(t, output, " # scoped errors\n    + GET /users/{id}\n    + success 200|201\n    + error   NotFound|Unauthorized\n    + error   RateLimited\n    + @internal\n")
 			again, err := Format(strings.NewReader(output), false)
 			require.NoError(t, err)
 			assert.Equal(t, output, again)
@@ -633,10 +646,10 @@ service Users
   - Get()
     + success 201|201
     + success
-    + error A|A
-    + error A
+    + error   A|A
+    + error   A
     + error
-    + error A B
+    + error   A B
     + successful = yes
     + errors = custom
     + @error = custom
