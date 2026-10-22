@@ -151,6 +151,10 @@ func TestParseSection(t *testing.T) {
 		{"+ @ann", sectionService, sectionMethodAnnotation},
 		{"+@ann", sectionService, sectionMethodAnnotation},
 		{"+ @success 200", sectionService, sectionMethodAnnotation},
+		{"+ success 200", sectionService, sectionMethodOption},
+		{"+ error NotFound|Unauthorized", sectionService, sectionMethodOption},
+		{"+ success = yes", sectionStruct, sectionTag},
+		{"type Address: string", sectionUnknown, sectionTypeAlias},
 		{"+ @ann", sectionStruct, sectionTag},
 		{"totally unknown", sectionUnknown, sectionUnknown},
 	}
@@ -456,14 +460,14 @@ func TestFormatLine_MethodAnnotation(t *testing.T) {
 		{"empty value becomes value-less", "+ @internal:", "    + @internal"},
 		{"inline comment", "+ @deprecated:Pong   # use V2", "    + @deprecated = Pong # use V2"},
 		{"hidden inline comment", "+ @deprecated:Pong ##! hidden", "    + @deprecated = Pong ##! hidden"},
-		{"success code", "+ @success 200", "    + @success 200"},
-		{"success codes with extra spaces", "+ @success   200|201", "    + @success 200|201"},
-		{"success code in colon form", "+ @success:200", "    + @success 200"},
-		{"success code in equals form", "+ @success = 200", "    + @success 200"},
-		{"success code in spaced colon form", "+ @success : 200", "    + @success 200"},
-		{"success codes with spaces around the bar", "+ @success 200 | 201", "    + @success 200|201"},
-		{"empty success value keeps the separator", "+ @success =", "    + @success ="},
-		{"empty success value in colon form keeps a separator", "+ @success:", "    + @success ="},
+		{"success code", "+ @success 200", "    + success 200"},
+		{"success codes with extra spaces", "+ @success   200|201", "    + success 200|201"},
+		{"success code in colon form", "+ @success:200", "    + success 200"},
+		{"success code in equals form", "+ @success = 200", "    + success 200"},
+		{"success code in spaced colon form", "+ @success : 200", "    + success 200"},
+		{"success codes with spaces around the bar", "+ @success 200 | 201", "    + success 200|201"},
+		{"empty success value remains missing", "+ @success =", "    + success"},
+		{"empty colon-form success value remains missing", "+ @success:", "    + success"},
 		{"multiple annotations split one per line", "+ @a @b", "    + @a\n    + @b"},
 		{"multiple annotations with values", "+ @a @b:val", "    + @a\n    + @b = val"},
 		{"value only ends the split", "+ @deprecated:Use @home instead", `    + @deprecated = "Use @home instead"`},
@@ -525,8 +529,7 @@ func TestFormatLine_AnnotationMigration(t *testing.T) {
 	})
 
 	t.Run("success annotation stays above the method", func(t *testing.T) {
-		// webrpc reads '+ @success' below a method as a route success code, so
-		// the annotation must be renamed there; a formatter cannot pick a name.
+		// Above-method @success is metadata, not a route option.
 		f := &form{topLvlSection: sectionService}
 		line, err := f.formatLine("@success:201")
 		require.NoError(t, err)

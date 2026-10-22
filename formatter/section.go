@@ -20,4 +20,6 @@ const (
 	sectionBasepath
 	sectionRoute
 	sectionMethodAnnotation
+	sectionMethodOption
+	sectionTypeAlias
 )
