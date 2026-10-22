@@ -343,7 +343,7 @@ func (f *form) formatLine(line string) (string, error) {
 		f.padding = 4
 		s, c := parseAndDivideInlineComment(line)
 		parts := strings.Fields(strings.TrimPrefix(s, "+"))
-		line = fmt.Sprintf("%s+ %s %s", strings.Repeat(" ", f.padding), parts[0], parts[1])
+		line = fmt.Sprintf("%s+ %-6s %s", strings.Repeat(" ", f.padding), parts[0], parts[1])
 		line = c.appendInlineComment(line)
 	case sectionMethodOption:
 		f.padding = 4

@@ -50,9 +50,9 @@ basepath = /api
 
 service Users
   - Get(GetUserRequest) => (GetUserResponse)
-    + GET /{userId} # by id
+    + GET    /{userId} # by id
   - List(ListUsersRequest) => (ListUsersResponse)
-    + QUERY /search
+    + QUERY  /search
   - Ping()
 
 struct GetUserRequest
@@ -83,9 +83,9 @@ service Intents
 
 service Intents
   - CommitIntent(CommitIntentRequest) => (CommitIntentResponse)
-    + GET /intents/{intentId}
-    + POST /intents/{intentId} # REST
-    + POST /Intents/CommitIntent # backward-compatible with pre-REST API route.
+    + GET    /intents/{intentId}
+    + POST   /intents/{intentId} # REST
+    + POST   /Intents/CommitIntent # backward-compatible with pre-REST API route.
   - Ping()
 `
 
@@ -117,7 +117,7 @@ error 1 Unauthorized "unauthorized" HTTP 401
 
 service Users
   - Get(GetUserRequest) => (GetUserResponse)
-    + GET /users/{id}
+    + GET    /users/{id}
     + json = id
     + go.field.name = ID
     + json = id # trailing
@@ -195,7 +195,7 @@ service Users
 
 service Users
   - Get(GetUserRequest) => (GetUserResponse)
-    + GET /users/{id}
+    + GET    /users/{id}
     + success 200 # ok
     + @internal
     + @public
@@ -282,14 +282,14 @@ func TestFormat_AboveMethodSuccessMigration(t *testing.T) {
 	tests := []struct {
 		name, annotations, options string
 	}{
-		{"success after annotation", "  @internal\n  @success:200\n", "    + GET /ping\n    + success 200\n    + @internal\n"},
-		{"success before annotation", "  @success:200\n  @internal\n", "    + GET /ping\n    + success 200\n    + @internal\n"},
-		{"success on same line", "  @internal @success:200 @public\n", "    + GET /ping\n    + success 200\n    + @internal\n    + @public\n"},
-		{"quoted success codes", "  @success:\"200|201\" # statuses\n", "    + GET /ping\n    + success 200|201 # statuses\n"},
+		{"success after annotation", "  @internal\n  @success:200\n", "    + GET    /ping\n    + success 200\n    + @internal\n"},
+		{"success before annotation", "  @success:200\n  @internal\n", "    + GET    /ping\n    + success 200\n    + @internal\n"},
+		{"success on same line", "  @internal @success:200 @public\n", "    + GET    /ping\n    + success 200\n    + @internal\n    + @public\n"},
+		{"quoted success codes", "  @success:\"200|201\" # statuses\n", "    + GET    /ping\n    + success 200|201 # statuses\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			input := "webrpc = v1\n\nservice Users\n" + tt.annotations + "  - Ping()\n    + GET /ping\n"
+			input := "webrpc = v1\n\nservice Users\n" + tt.annotations + "  - Ping()\n    + GET    /ping\n"
 			expected := "webrpc = v1\n\nservice Users\n  - Ping()\n" + tt.options
 			output, err := Format(strings.NewReader(input), false)
 			require.NoError(t, err)
@@ -325,7 +325,7 @@ service Users
 
   # Get documentation
   - Get() # method comment
-    + GET /users
+    + GET    /users
     + @description = "Contact @support # for help"
     + @internal
     + @email = user@example.com
@@ -458,8 +458,8 @@ service Users
 
 service Users
   - Get(id: uint64) => (user: User)
-    + GET /users/{id}
-    + POST /Users/Get
+    + GET    /users/{id}
+    + POST   /Users/Get
     + success 201|200 # first status is the default
     + error   NotFound|Unauthorized
     + error   RateLimited
@@ -500,8 +500,8 @@ struct User
 `
 		expected := `service ExampleService
   - GetUser(userID: uint64) => (user: User)
-    + GET /users/{userID}
-    + POST /ExampleService/GetUser # compatibility route
+    + GET    /users/{userID}
+    + POST   /ExampleService/GetUser # compatibility route
     + success 200 # applies to both routes
     + error   UserNotFound|InvalidName
     + @auth = ApiKeyAuth
@@ -529,7 +529,7 @@ func TestFormat_AnnotationsAfterEveryRouteVerb(t *testing.T) {
 	for _, verb := range []string{"GET", "QUERY", "POST", "PUT", "PATCH", "DELETE"} {
 		t.Run(verb, func(t *testing.T) {
 			input := "service Users\n  - Get()\n    # Authentication\n    + @auth = ApiKeyAuth\n    # Route\n    + " + verb + " /users\n    + error NotFound\n    + @internal\n    + success 200\n"
-			expected := "service Users\n  - Get()\n    # Route\n    + " + verb + " /users\n    + success 200\n    + error   NotFound\n    # Authentication\n    + @auth = ApiKeyAuth\n    + @internal\n"
+			expected := "service Users\n  - Get()\n    # Route\n    + " + verb + strings.Repeat(" ", 7-len(verb)) + "/users\n    + success 200\n    + error   NotFound\n    # Authentication\n    + @auth = ApiKeyAuth\n    + @internal\n"
 			output, err := Format(strings.NewReader(input), false)
 			require.NoError(t, err)
 			assert.Equal(t, expected, output)
@@ -566,15 +566,15 @@ func TestFormat_RoutesSortedByHTTPVerb(t *testing.T) {
 `
 	expected := `service Users
   - GetUser(userID: uint64) => (user: User)
-    + GET /users/{userID}
+    + GET    /users/{userID}
     # Another GET
-    + GET /users # second GET stays second
-    + QUERY /users/search
+    + GET    /users # second GET stays second
+    + QUERY  /users/search
     # Compatibility route
-    + POST /ExampleService/GetUser # compatibility route
-    + POST /users/{userID} # second POST stays second
-    + PUT /users/{userID}
-    + PATCH /users/{userID}
+    + POST   /ExampleService/GetUser # compatibility route
+    + POST   /users/{userID} # second POST stays second
+    + PUT    /users/{userID}
+    + PATCH  /users/{userID}
     + DELETE /users/{userID}
     + success 200
     + error   UserNotFound|InvalidName
@@ -583,8 +583,8 @@ func TestFormat_RoutesSortedByHTTPVerb(t *testing.T) {
 
   # Separate method
   - Other()
-    + GET /other
-    + POST /other
+    + GET    /other
+    + POST   /other
     + @public
 `
 	for _, sortErrors := range []bool{false, true} {
@@ -617,11 +617,11 @@ func TestFormat_LegacyMethodErrors(t *testing.T) {
 		"stream Get(id:uint64) => stream (user:User)",
 	} {
 		t.Run(signature, func(t *testing.T) {
-			input := "service Users\n  @internal\n  - " + signature + " errors NotFound | Unauthorized # scoped errors\n    + error RateLimited\n    + GET /users/{id}\n    + @success 200 | 201\n"
+			input := "service Users\n  @internal\n  - " + signature + " errors NotFound | Unauthorized # scoped errors\n    + error RateLimited\n    + GET    /users/{id}\n    + @success 200 | 201\n"
 			output, err := Format(strings.NewReader(input), false)
 			require.NoError(t, err)
 			assert.NotContains(t, output, " errors ")
-			assert.Contains(t, output, " # scoped errors\n    + GET /users/{id}\n    + success 200|201\n    + error   NotFound|Unauthorized\n    + error   RateLimited\n    + @internal\n")
+			assert.Contains(t, output, " # scoped errors\n    + GET    /users/{id}\n    + success 200|201\n    + error   NotFound|Unauthorized\n    + error   RateLimited\n    + @internal\n")
 			again, err := Format(strings.NewReader(output), false)
 			require.NoError(t, err)
 			assert.Equal(t, output, again)
